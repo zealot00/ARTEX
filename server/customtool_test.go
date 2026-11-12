@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/intercept"
 )
 
 func TestRenderTemplateCommand(t *testing.T) {
@@ -34,6 +37,16 @@ func TestRenderTemplateHTTP(t *testing.T) {
 	got := renderTemplate("https://x/submit?flag={flag}", map[string]any{"flag": "CTF{abc}"}, identity)
 	if got != "https://x/submit?flag=CTF{abc}" {
 		t.Fatalf("http render: %q", got)
+	}
+}
+
+func TestRenderTemplateSinglePassNoDoubleSubstitution(t *testing.T) {
+	got := renderTemplate("cmd {a} {b}", map[string]any{
+		"a": "{b}",
+		"b": "INJECTED",
+	}, shellQuote)
+	if got != "cmd '{b}' 'INJECTED'" {
+		t.Fatalf("double substitution occurred: %q", got)
 	}
 }
 
@@ -183,5 +196,24 @@ func TestHTTPToolTruncatesLargeBody(t *testing.T) {
 	out := res.Flatten()
 	if len(out) >= 40000 {
 		t.Fatalf("oversized http body was not truncated: len=%d", len(out))
+	}
+}
+
+func TestCommandCustomToolAppliesRenderedInterceptRules(t *testing.T) {
+	ic := intercept.New(nil)
+	ic.SetRulesForTest([]db.InterceptRule{
+		{ID: 1, Name: "No whoami", Enabled: true, Priority: 50,
+			MatchTarget: "tool_input", MatchType: "string", Action: "deny",
+			Pattern: "whoami", Message: "whoami blocked by rule"},
+	})
+	s := &Server{m: &Manager{interceptor: ic}}
+	execRaw, _ := json.Marshal(map[string]any{"command": "{bin} --version"})
+	ctx := intercept.WithConvID(context.Background(), 1)
+	res, err := s.runCommandTool(ctx, "custom_id", execRaw, map[string]any{"bin": "whoami"}, nil)
+	if err != nil {
+		t.Fatalf("runCommandTool error: %v", err)
+	}
+	if !res.IsError || !strings.Contains(res.Flatten(), "whoami blocked by rule") {
+		t.Fatalf("expected rendered command to be blocked by intercept rule, got IsError=%v out=%q", res.IsError, res.Flatten())
 	}
 }

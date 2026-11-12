@@ -2,9 +2,17 @@ package server
 
 import "os"
 
-// secretEnv lists the credentials read from the environment only at startup:
-// ARTEX_PG_DSN by NewManager, the API keys by agent.FromEnv inside New.
-var secretEnv = []string{"ARTEX_PG_DSN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"}
+// secretEnv lists the credentials and endpoint overrides read from the environment
+// only at startup: ARTEX_PG_DSN by NewManager, the API keys by agent.FromEnv
+// inside New, and SDK-level *_BASE_URL overrides so neither child processes nor
+// empty-BaseURL providers inherit unexpected third-party endpoints.
+var secretEnv = []string{
+	"ARTEX_PG_DSN",
+	"ANTHROPIC_API_KEY",
+	"OPENAI_API_KEY",
+	"ANTHROPIC_BASE_URL",
+	"OPENAI_BASE_URL",
+}
 
 // ScrubSecretEnv removes secretEnv from the process environment once startup has
 // read it. Child processes (agent shells, custom tools, MCP stdio servers) copy

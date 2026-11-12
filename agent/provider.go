@@ -16,7 +16,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -366,6 +365,9 @@ func (c Config) NewProvider() (llm.Provider, error) {
 			apiKey = ollamaPlaceholderKey
 		}
 	}
+	if err := ValidateEndpoint(wireFormat, baseURL); err != nil {
+		return nil, err
+	}
 	lc := llm.Config{
 		Format:     wireFormat,
 		BaseURL:    baseURL,
@@ -518,24 +520,19 @@ func requestBodySnapshot(req *http.Request) string {
 
 func quotaAwareHTTPClient(proxy, sessionHeaderKey, userAgent string) (*http.Client, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	proxy = strings.TrimSpace(proxy)
-	if proxy == "" {
+	proxyURL, err := ValidateProxyURL(proxy)
+	if err != nil {
+		return nil, err
+	}
+	if proxyURL == nil {
 		transport.Proxy = nil // empty = direct; no fallback to the HTTP_PROXY/HTTPS_PROXY env vars
 	} else {
-		proxyURL, err := url.Parse(proxy)
-		if err != nil {
-			return nil, fmt.Errorf("llm: invalid proxy %q: %w", proxy, err)
-		}
-		switch proxyURL.Scheme {
-		case "http", "https", "socks5":
-		case "":
-			return nil, fmt.Errorf("llm: proxy %q missing scheme (use http://, https:// or socks5://)", proxy)
-		default:
-			return nil, fmt.Errorf("llm: unsupported proxy scheme %q (use http, https or socks5)", proxyURL.Scheme)
-		}
 		transport.Proxy = http.ProxyURL(proxyURL)
 	}
-	return &http.Client{Transport: quotaAwareTransport{base: transport, sessionHeaderKey: strings.TrimSpace(sessionHeaderKey), userAgent: strings.TrimSpace(userAgent)}}, nil
+	return &http.Client{
+		Transport:     quotaAwareTransport{base: transport, sessionHeaderKey: strings.TrimSpace(sessionHeaderKey), userAgent: strings.TrimSpace(userAgent)},
+		CheckRedirect: RejectLLMRedirect,
+	}, nil
 }
 
 // MaxUserAgentLen bounds a custom User-Agent value. Generous for real UA strings

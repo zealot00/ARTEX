@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
@@ -19,6 +20,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/Autumn-27/artex/config"
+	"github.com/Autumn-27/artex/db"
 )
 
 const (
@@ -194,25 +196,53 @@ func jwtSubject(tokenStr string, key []byte) string {
 	return claims.Subject
 }
 
-// approver is who a human decision is recorded for: the subject of the
-// request's session token.
+type authIdentityContextKey struct{}
+
+// AuthIdentity describes the authenticated caller on a request (admin JWT or scoped API key).
+type AuthIdentity struct {
+	Kind     string // "jwt" | "api_key"
+	Subject  string
+	APIKeyID int64
+	Scopes   map[string]bool
+}
+
+func withAuthIdentity(ctx context.Context, id AuthIdentity) context.Context {
+	return context.WithValue(ctx, authIdentityContextKey{}, id)
+}
+
+func authIdentityFrom(r *http.Request) (AuthIdentity, bool) {
+	if r == nil {
+		return AuthIdentity{}, false
+	}
+	id, ok := r.Context().Value(authIdentityContextKey{}).(AuthIdentity)
+	return id, ok
+}
+
+// approver is who a human/machine decision is recorded for: the context
+// identity subject ("ARTEX" or "apikey:<name>"), falling back to JWT subject.
 func (s *Server) approver(r *http.Request) string {
+	if id, ok := authIdentityFrom(r); ok && id.Subject != "" {
+		return id.Subject
+	}
 	return jwtSubject(extractToken(r), s.jwtKey)
 }
 
-// extractToken reads the JWT from Authorization: Bearer header,
+// extractToken reads a JWT or API key from Authorization: Bearer, X-API-Key,
 // artex_token cookie, or ?token= query param (for SSE connections).
 func extractToken(r *http.Request) string {
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-		return strings.TrimPrefix(h, "Bearer ")
+		return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
+	}
+	if k := strings.TrimSpace(r.Header.Get("X-API-Key")); k != "" {
+		return k
 	}
 	if c, err := r.Cookie("artex_token"); err == nil && c.Value != "" {
 		return c.Value
 	}
-	return r.URL.Query().Get("token")
+	return strings.TrimSpace(r.URL.Query().Get("token"))
 }
 
-// requireAuth wraps h with JWT validation.
+// requireAuth wraps h with JWT or scoped API key validation.
 // /api/auth/* and /api/health are exempt.
 func (s *Server) requireAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -226,12 +256,59 @@ func (s *Server) requireAuth(h http.Handler) http.Handler {
 			writeErr(w, 401, "Unauthorized")
 			return
 		}
+		if db.IsAPIKeyFormat(tok) {
+			key, err := s.authenticateAPIKey(tok)
+			if err != nil || key == nil {
+				writeErr(w, 401, "API key is invalid, expired, or revoked")
+				return
+			}
+			scopes := make(map[string]bool, len(key.Scopes))
+			for _, sc := range key.Scopes {
+				scopes[sc] = true
+			}
+			reqScope, allowed := authorizeAPIKeyRoute(r.Method, p)
+			if !allowed {
+				writeErr(w, 403, "API key is not permitted on administrative or configuration endpoints")
+				return
+			}
+			if reqScope != "" && !scopes[reqScope] {
+				writeErr(w, 403, fmt.Sprintf("API key lacks required scope %q", reqScope))
+				return
+			}
+			id := AuthIdentity{
+				Kind:     "api_key",
+				Subject:  "apikey:" + key.Name,
+				APIKeyID: key.ID,
+				Scopes:   scopes,
+			}
+			h.ServeHTTP(w, r.WithContext(withAuthIdentity(r.Context(), id)))
+			return
+		}
 		if !verifyJWT(tok, s.jwtKey) {
 			writeErr(w, 401, "token is invalid or expired")
 			return
 		}
-		h.ServeHTTP(w, r)
+		id := AuthIdentity{
+			Kind:    "jwt",
+			Subject: jwtSubject(tok, s.jwtKey),
+		}
+		h.ServeHTTP(w, r.WithContext(withAuthIdentity(r.Context(), id)))
 	})
+}
+
+func (s *Server) requireAdminJWT(w http.ResponseWriter, r *http.Request) bool {
+	if id, ok := authIdentityFrom(r); ok {
+		if id.Kind != "jwt" {
+			writeErr(w, 403, "admin JWT session required")
+			return false
+		}
+		return true
+	}
+	if !verifyJWT(extractToken(r), s.jwtKey) {
+		writeErr(w, 401, "Unauthorized")
+		return false
+	}
+	return true
 }
 
 // GET /api/auth/status — reports whether the admin password has been initialised.

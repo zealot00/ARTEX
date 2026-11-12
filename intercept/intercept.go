@@ -502,6 +502,9 @@ func (i *Interceptor) SetJudgeConfig(c JudgeConfig) error {
 // falls back to the configured FailAction. Ask verdicts carry the human-approval
 // timeout so the existing HandleAsk consumes them unchanged.
 func (i *Interceptor) Judge(ctx context.Context, tool string, arguments json.RawMessage) (Decision, bool) {
+	if i.db == nil {
+		return Decision{}, false
+	}
 	cfg := i.judgeConfig()
 	i.mu.RLock()
 	rv := i.reviewer

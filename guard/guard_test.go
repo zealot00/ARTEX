@@ -212,4 +212,34 @@ func TestShortBlockReasonUnchanged(t *testing.T) {
 	}
 }
 
+func TestBlockedCallAuditSingleBlockWithCommand(t *testing.T) {
+	ic := intercept.New(nil)
+	ic.SetRulesForTest([]db.InterceptRule{
+		{ID: 1, Name: "No whoami", Enabled: true, Priority: 50,
+			MatchTarget: "tool_input", MatchType: "string", Action: "deny",
+			Pattern: "whoami", Message: "whoami is forbidden"},
+	})
+	g := NewWithInterceptor(ic)
+	block, _ := pre(g, context.Background(), "Bash", `{"command":"whoami"}`)
+	if !block {
+		t.Fatal("expected whoami to be blocked")
+	}
+	audit := g.Audit()
+	if len(audit) != 1 {
+		t.Fatalf("audit entries = %d (%+v), want exactly 1 block entry", len(audit), audit)
+	}
+	if audit[0].Action != "block" || audit[0].Command != "whoami" {
+		t.Fatalf("audit[0] = %+v, want action=block command=whoami", audit[0])
+	}
+	// Passing call still records an allow entry with command.
+	block, _ = pre(g, context.Background(), "Bash", `{"command":"ls"}`)
+	if block {
+		t.Fatal("expected ls to pass")
+	}
+	audit = g.Audit()
+	if len(audit) != 2 || audit[1].Action != "allow" || audit[1].Command != "ls" {
+		t.Fatalf("audit after allow = %+v, want second entry allow ls", audit)
+	}
+}
+
 var _ = hook.PreToolUse

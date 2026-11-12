@@ -46,6 +46,23 @@ func TestStageAskOperatorImage(t *testing.T) {
 	if _, err := stageAskOperatorImage(dir, "7", filepath.Join(dir, "nope.png")); err == nil {
 		t.Fatal("expected missing-file rejection")
 	}
+
+	// outside-workspace file and symlink escape rejected
+	outside := t.TempDir()
+	extImg := filepath.Join(outside, "ext.png")
+	if err := os.WriteFile(extImg, []byte("fakepng"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stageAskOperatorImage(dir, "7", extImg); err == nil {
+		t.Fatal("expected rejection for image outside workspace data dir")
+	}
+	linkImg := filepath.Join(dir, "link.png")
+	if err := os.Symlink(extImg, linkImg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stageAskOperatorImage(dir, "7", linkImg); err == nil {
+		t.Fatal("expected rejection for symlinked image pointing outside workspace data dir")
+	}
 }
 
 // The emitted activity must carry the {text, attachments} Detail shape the

@@ -89,7 +89,21 @@ func stageAskOperatorImage(dataDir, taskID, src string) ([]chatAttachment, error
 	if !askOperatorImageExt[ext] {
 		return nil, fmt.Errorf("image_path must be a png/jpg/jpeg/webp/gif file, got %q", filepath.Base(src))
 	}
-	st, err := os.Stat(src)
+	baseReal := filepath.Clean(dataDir)
+	if r, err := filepath.EvalSymlinks(baseReal); err == nil {
+		baseReal = r
+	}
+	if !filepath.IsAbs(src) {
+		src = filepath.Join(baseReal, "tasks", taskID, src)
+	}
+	realSrc, err := filepath.EvalSymlinks(src)
+	if err != nil {
+		return nil, fmt.Errorf("image not readable: %v", err)
+	}
+	if realSrc != baseReal && !strings.HasPrefix(realSrc, baseReal+string(os.PathSeparator)) {
+		return nil, fmt.Errorf("image_path must stay inside the workspace data directory")
+	}
+	st, err := os.Stat(realSrc)
 	if err != nil {
 		return nil, fmt.Errorf("image not readable: %v", err)
 	}
@@ -101,7 +115,7 @@ func stageAskOperatorImage(dataDir, taskID, src string) ([]chatAttachment, error
 		return nil, err
 	}
 	name := fmt.Sprintf("ask-operator-%d%s", time.Now().Unix(), ext)
-	in, err := os.Open(src)
+	in, err := os.Open(realSrc)
 	if err != nil {
 		return nil, err
 	}

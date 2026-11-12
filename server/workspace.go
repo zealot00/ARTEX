@@ -23,23 +23,72 @@ const (
 	maxWorkspaceUpload = 512 << 20 // 512 MiB per upload request
 )
 
-// wsResolve maps a user-supplied relative path to an absolute path INSIDE the work
-// dir. It returns ok=false if the path would escape the root. filepath.Clean on a
-// rooted copy collapses any ".." so nothing can climb above the root.
-func (s *Server) wsResolve(rel string) (string, bool) {
+// wsBaseReal returns the canonical (symlink-resolved) workspace root.
+func (s *Server) wsBaseReal() string {
 	base := filepath.Clean(s.m.dir)
+	if realBase, err := filepath.EvalSymlinks(base); err == nil {
+		return realBase
+	}
+	return base
+}
+
+// resolveInsideRoot verifies that candidate stays inside realBase after resolving
+// symlinks on its deepest existing ancestor.
+func resolveInsideRoot(realBase, candidate string) (string, bool) {
+	cur := filepath.Clean(candidate)
+	var tail []string
+	for {
+		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			resolved = filepath.Clean(resolved)
+			if resolved != realBase && !strings.HasPrefix(resolved, realBase+string(os.PathSeparator)) {
+				return "", false
+			}
+			return resolved, true
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return "", false
+		}
+		tail = append(tail, filepath.Base(cur))
+		cur = parent
+	}
+}
+
+// wsResolve maps a user-supplied relative path to an absolute path INSIDE the work
+// dir. It returns ok=false if the path would escape the root via ".." or symlinks.
+func (s *Server) wsResolve(rel string) (string, bool) {
+	base := s.wsBaseReal()
 	rel = strings.TrimPrefix(strings.TrimSpace(rel), "/")
 	clean := filepath.Clean("/" + rel) // e.g. "/a/../../etc" → "/etc" (still rooted at "/")
 	abs := filepath.Clean(filepath.Join(base, clean))
-	if abs != base && !strings.HasPrefix(abs, base+string(os.PathSeparator)) {
+	return resolveInsideRoot(base, abs)
+}
+
+// wsResolveDelete resolves a path for deletion: the parent directory must resolve
+// inside the workspace root (preventing traversal through a symlinked directory),
+// while the leaf itself is not dereferenced so a symlink inside the workspace can
+// still be removed without touching its target.
+func (s *Server) wsResolveDelete(rel string) (string, bool) {
+	base := s.wsBaseReal()
+	rel = strings.TrimPrefix(strings.TrimSpace(rel), "/")
+	clean := filepath.Clean("/" + rel)
+	if clean == "/" {
+		return base, true
+	}
+	parentRel := filepath.Dir(clean)
+	parentAbs, ok := resolveInsideRoot(base, filepath.Join(base, parentRel))
+	if !ok {
 		return "", false
 	}
-	return abs, true
+	return filepath.Join(parentAbs, filepath.Base(clean)), true
 }
 
 // wsRel renders an absolute path back as a workspace-relative path (forward slashes).
 func (s *Server) wsRel(abs string) string {
-	base := filepath.Clean(s.m.dir)
+	base := s.wsBaseReal()
 	rel, err := filepath.Rel(base, abs)
 	if err != nil || rel == "." {
 		return ""
@@ -144,7 +193,7 @@ func (s *Server) wsWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	abs, ok := s.wsResolve(req.Path)
-	if !ok || abs == filepath.Clean(s.m.dir) {
+	if !ok || abs == s.wsBaseReal() {
 		writeErr(w, 400, "invalid path")
 		return
 	}
@@ -173,7 +222,7 @@ func (s *Server) wsMkdir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	abs, ok := s.wsResolve(req.Path)
-	if !ok || abs == filepath.Clean(s.m.dir) {
+	if !ok || abs == s.wsBaseReal() {
 		writeErr(w, 400, "invalid path")
 		return
 	}
@@ -187,16 +236,16 @@ func (s *Server) wsMkdir(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/workspace/delete?path=<rel> — removes a file or a directory tree
 // (confined to the work dir; the root itself can't be deleted).
 func (s *Server) wsDelete(w http.ResponseWriter, r *http.Request) {
-	abs, ok := s.wsResolve(r.URL.Query().Get("path"))
+	abs, ok := s.wsResolveDelete(r.URL.Query().Get("path"))
 	if !ok {
 		writeErr(w, 400, "invalid path")
 		return
 	}
-	if abs == filepath.Clean(s.m.dir) {
+	if abs == s.wsBaseReal() {
 		writeErr(w, 400, "cannot delete the workspace root directory")
 		return
 	}
-	if _, err := os.Stat(abs); err != nil {
+	if _, err := os.Lstat(abs); err != nil {
 		writeErr(w, 404, "path does not exist")
 		return
 	}

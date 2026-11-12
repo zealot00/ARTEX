@@ -10,7 +10,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -1890,6 +1889,15 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.UserAgent = ua
+	if _, err := agent.ValidateProxyURL(p.Proxy); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	effCfg := agent.ConfigFrom(p.Format, p.Model, p.BaseURL, "", p.Proxy)
+	if err := agent.ValidateEndpoint(effCfg.Format, effCfg.BaseURL); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
 	id, err := pg.SaveProfile(&p)
 	if err != nil {
 		writeErr(w, 500, err.Error())
@@ -2061,20 +2069,43 @@ func (s *Server) pgListModels(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
+	// Resolve stored profile when profile_id is supplied (same rule as testLLM:
+	// fill missing endpoint/proxy from DB, but only ship stored credentials to the
+	// endpoint they belong to).
+	var stored *db.LLMProfile
+	if req.ProfileID != nil && s.m != nil && s.m.pg != nil {
+		if p, err := s.m.pg.ProfileByID(*req.ProfileID); err == nil && p != nil {
+			stored = p
+		}
+	}
+	if stored != nil {
+		if strings.TrimSpace(req.Provider) == "" {
+			req.Provider = stored.Format
+		}
+		if strings.TrimSpace(req.BaseURL) == "" {
+			req.BaseURL = stored.BaseURL
+		}
+		if strings.TrimSpace(req.Proxy) == "" && sameLLMEndpoint(req.Provider, req.BaseURL, stored.Format, stored.BaseURL) {
+			req.Proxy = stored.Proxy
+		}
+	}
 	// Resolve API key: form input > profile stored key. The stored key is only
 	// sent to the endpoint it was saved for, since base_url comes from the form.
 	apiKey := strings.TrimSpace(req.APIKey)
 	withheld := false
-	if apiKey == "" && req.ProfileID != nil {
-		if p, err := s.m.pg.ProfileByID(*req.ProfileID); err == nil && p != nil {
-			if sameLLMEndpoint(req.Provider, req.BaseURL, p.Format, p.BaseURL) {
-				apiKey = p.APIKey
-			} else {
-				withheld = p.APIKey != ""
-			}
+	if apiKey == "" && stored != nil {
+		if sameLLMEndpoint(req.Provider, req.BaseURL, stored.Format, stored.BaseURL) {
+			apiKey = stored.APIKey
+		} else {
+			withheld = stored.APIKey != ""
 		}
 	}
 	provider := strings.TrimSpace(req.Provider)
+	effCfg := agent.ConfigFrom(provider, "", req.BaseURL, "", req.Proxy)
+	if err := agent.ValidateEndpoint(effCfg.Format, effCfg.BaseURL); err != nil {
+		writeJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
 	// Ollama serves its model list keyless on the local server: no key gate.
 	if apiKey == "" && provider != "ollama" {
 		msg := "no API Key provided"
@@ -2149,14 +2180,22 @@ func (s *Server) pgListModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build HTTP client with optional proxy.
-	transport := &http.Transport{}
-	if p := strings.TrimSpace(req.Proxy); p != "" {
-		if pu, err := url.Parse(p); err == nil {
-			transport.Proxy = http.ProxyURL(pu)
-		}
+	// Build HTTP client with validated optional proxy and disabled redirects so
+	// credentials never leak on 30x or bypass a malformed proxy setting.
+	proxyURL, err := agent.ValidateProxyURL(req.Proxy)
+	if err != nil {
+		writeJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
+		return
 	}
-	client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
+	transport := &http.Transport{Proxy: nil}
+	if proxyURL != nil {
+		transport.Proxy = http.ProxyURL(proxyURL)
+	}
+	client := &http.Client{
+		Transport:     transport,
+		Timeout:       30 * time.Second,
+		CheckRedirect: agent.RejectLLMRedirect,
+	}
 
 	// Try each candidate; return the first that yields a non-empty model list.
 	var lastErr string

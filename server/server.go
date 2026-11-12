@@ -54,6 +54,7 @@ type Server struct {
 
 	loginLimit     *loginLimiter  // per-IP attempt limit on POST /api/auth/login
 	trustedProxies []netip.Prefix // ARTEX_TRUSTED_PROXIES; see clientIP
+	apiKeyAuthFn   func(string, time.Time) (*db.APIKey, error)
 
 	// concMu serializes concurrency-cap decisions (admission + reconcile) so a
 	// scheduler tick and an HTTP settings change / task creation can't both count
@@ -258,14 +259,18 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		} else {
 			log.Printf("[engine] LLM configured from DB: %s / %s", cfg.Provider(), cfg.Model)
 		}
-	} else if cfg, ok := agent.FromEnv(); ok {
-		if err := s.applyLLM(cfg); err != nil {
-			log.Printf("[engine] env provider init failed — engine idle: %v", err)
+	} else if !agent.EnvFallbackDisabledByEnv() {
+		if cfg, ok := agent.FromEnv(); ok {
+			if err := s.applyLLM(cfg); err != nil {
+				log.Printf("[engine] env provider init failed — engine idle: %v", err)
+			} else {
+				log.Printf("[engine] LLM configured from env: %s / %s", cfg.Provider(), cfg.Model)
+			}
 		} else {
-			log.Printf("[engine] LLM configured from env: %s / %s", cfg.Provider(), cfg.Model)
+			log.Printf("[engine] no LLM provider configured — engine idle until set via /api/llm or env")
 		}
 	} else {
-		log.Printf("[engine] no LLM provider configured — engine idle until set via /api/llm or env")
+		log.Printf("[engine] env LLM fallback disabled by policy — engine idle until configured in DB")
 	}
 	// Both env readers have now run (NewManager for the DSN, FromEnv above for the
 	// keys). Drop the secrets before anything below can spawn a child process:
@@ -688,6 +693,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/login", s.authLogin)
 	mux.HandleFunc("POST /api/auth/change-password", s.authChangePassword)
 
+	mux.HandleFunc("GET /api/api-keys", s.listAPIKeys)
+	mux.HandleFunc("POST /api/api-keys", s.createAPIKey)
+	mux.HandleFunc("DELETE /api/api-keys/{id}", s.revokeAPIKey)
+
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/stats", s.stats)
 	mux.HandleFunc("GET /api/logs", s.getLogs)
@@ -708,6 +717,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/task-templates/{id}", s.pgDeleteTaskTemplate)
 	mux.HandleFunc("GET /api/tasks/{id}", s.getTask)
 	mux.HandleFunc("GET /api/tasks/{id}/outcome", s.taskOutcome)
+	mux.HandleFunc("GET /api/tasks/{id}/workorder", s.taskWorkOrder)
 	mux.HandleFunc("GET /api/tasks/{id}/lessons", s.taskLessons)
 	mux.HandleFunc("POST /api/tasks/{id}/lessons/extract", s.extractTaskLessons)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTaskMetadata)
@@ -1601,7 +1611,9 @@ type createTaskReq struct {
 	InterceptRules []taskInterceptRuleReq `json:"intercept_rules,omitempty"`
 	// Credentials: test accounts declared at creation (#3). An empty password means
 	// "agent generates": the agent registers that account and records it back.
-	Credentials []taskCredentialReq `json:"credentials,omitempty"`
+	Credentials    []taskCredentialReq `json:"credentials,omitempty"`
+	ExternalRef    string              `json:"external_ref,omitempty"`
+	IdempotencyKey string              `json:"idempotency_key,omitempty"`
 }
 
 type taskCredentialReq struct {
@@ -1619,6 +1631,19 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(req.Description) == "" {
 		req.Description = "Unnamed task"
+	}
+	req.ExternalRef = strings.TrimSpace(req.ExternalRef)
+	if len([]rune(req.ExternalRef)) > 256 {
+		writeErr(w, 400, "external_ref exceeds 256 characters")
+		return
+	}
+	if strings.TrimSpace(req.IdempotencyKey) == "" {
+		req.IdempotencyKey = r.Header.Get("Idempotency-Key")
+	}
+	req.IdempotencyKey = strings.TrimSpace(req.IdempotencyKey)
+	if len([]rune(req.IdempotencyKey)) > 128 {
+		writeErr(w, 400, "idempotency_key exceeds 128 characters")
+		return
 	}
 	if len(req.LLMProfileIDs) == 0 && req.LLMProfileID != nil {
 		req.LLMProfileIDs = []int64{*req.LLMProfileID}
@@ -1664,7 +1689,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "invalid task-level intercept rules: "+err.Error())
 		return
 	}
-	t, err := s.m.CreateTaskWithOptions(req.Description, req.Goal, db.TaskCreateOptions{
+	t, created, err := s.m.CreateTaskIdempotent(req.Description, req.Goal, db.TaskCreateOptions{
 		Name: strings.TrimSpace(req.Name), CategoryID: req.CategoryID,
 		SourceTaskIDs: sourceIDs, CompanyIDs: req.CompanyIDs, LLMProfileIDs: req.LLMProfileIDs,
 		TimeoutSeconds: req.TimeoutSeconds, PlanHeartbeatSeconds: req.PlanHeartbeatSeconds, PlanQuietMode: req.PlanQuietMode,
@@ -1672,6 +1697,8 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		InterceptRules:  interceptRules,
 		LLMRotate:       req.LLMRotate,
 		TargetGate:      req.TargetGate,
+		ExternalRef:     req.ExternalRef,
+		IdempotencyKey:  req.IdempotencyKey,
 	})
 	if err != nil {
 		if errors.Is(err, db.ErrTaskCategoryInvalid) || errors.Is(err, db.ErrTaskCategoryNotFound) {
@@ -1683,6 +1710,10 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeErr(w, 500, err.Error())
+		return
+	}
+	if !created {
+		writeJSON(w, 200, taskDTO(t, s.resolvedTaskStatus(t)))
 		return
 	}
 	log.Printf("[task] created task #%s «%s» goal: %s", t.ID, req.Description, req.Goal)
@@ -3730,6 +3761,10 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		changed = true // capture-off egress is baked into agents at build time → rebuild
 	}
 	if req.WebSearchEnabled != nil || req.WebSearchBackend != nil || req.BraveKey != nil || req.TavilyKey != nil || req.WebSearchProxy != nil {
+		if req.WebSearchEnabled != nil && *req.WebSearchEnabled && agent.WebSearchDisabledByEnv() {
+			writeErr(w, 403, "web search is disabled by environment policy")
+			return
+		}
 		// Fill unspecified fields from current state so a partial PUT doesn't reset them.
 		on, backend, _, _, _ := s.m.WebSearch()
 		if req.WebSearchEnabled != nil {
@@ -3765,6 +3800,10 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 // edits are tested); empty API keys fall back to stored values so the user need
 // not retype them. Always 200 with {ok, error?, count?, backend?}.
 func (s *Server) testWebSearch(w http.ResponseWriter, r *http.Request) {
+	if agent.WebSearchDisabledByEnv() {
+		writeJSON(w, 200, map[string]any{"ok": false, "error": "web search is disabled by environment policy"})
+		return
+	}
 	var req struct {
 		Backend   string `json:"web_search_backend"`
 		Proxy     string `json:"web_search_proxy"`
@@ -4090,8 +4129,8 @@ func (s *Server) gc(w http.ResponseWriter, r *http.Request) {
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization,X-API-Key,Idempotency-Key")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(204)
 			return

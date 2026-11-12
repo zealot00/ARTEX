@@ -59,6 +59,8 @@ type TaskDTO struct {
 	LLMFailoverState   string             `json:"llm_failover_state"`
 	LLMFailoverReason  string             `json:"llm_failover_reason,omitempty"`
 	SourceTaskIDs      []string           `json:"source_task_ids"`
+	ExternalRef        string             `json:"external_ref,omitempty"`
+	IdempotencyKey     string             `json:"idempotency_key,omitempty"`
 	ArchiveBlockedBy   string             `json:"archive_blocked_by_task_id,omitempty"`
 	CompanyIDs         []int64            `json:"company_ids"`
 	CoverageEnabled    bool               `json:"coverage_enabled"` // asset coverage feature switch (fixed at creation)
@@ -136,6 +138,8 @@ func taskDTO(t *Task, status string) TaskDTO {
 		LLMFailoverState:   llmState.FailoverState,
 		LLMFailoverReason:  llmState.FailoverReason,
 		SourceTaskIDs:      sourceIDs,
+		ExternalRef:        t.ExternalRef,
+		IdempotencyKey:     t.IdempotencyKey,
 		CompanyIDs:         lifecycle.CompanyIDs,
 		CoverageEnabled:    t.CoverageEnabled,
 		PlanQuietMode:      t.PlanQuietMode,

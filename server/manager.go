@@ -47,6 +47,8 @@ type Task struct {
 	QueuedAt           int64   `json:"queued_at,omitempty"`
 	QueueMode          string  `json:"queue_mode,omitempty"`
 	ParentRef          string  `json:"parent_ref,omitempty"`     // parent task id (orchestration spawn record)
+	ExternalRef        string  `json:"external_ref,omitempty"`   // external work-order / ticket reference
+	IdempotencyKey     string  `json:"idempotency_key,omitempty"`
 	LLMProfileID       *int64  `json:"llm_profile_id,omitempty"` // LLM profile to run this task's planner/worker; nil = use the globally active profile
 	LLMProfileIDs      []int64 `json:"llm_profile_ids,omitempty"`
 	ActiveLLMProfileID *int64  `json:"active_llm_profile_id,omitempty"`
@@ -471,7 +473,8 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 			log.Printf("[proxy] global proxy %q invalid, ignored: %v", m.globalProxy, err)
 		}
 	}
-	m.enrich = enrich.New(m.assets, m.ProxyAddr, 4)
+	// enrich.Engine has no active callers (and lacks target_gate / asset-rule
+	// enforcement), so avoid spawning unused dnsx + worker goroutines at boot.
 	// Reconcile the seeded browser MCP with the persisted capture state, so a
 	// restart with capture already on keeps Playwright routed through the proxy.
 	m.syncBrowserMCPProxy()
@@ -584,6 +587,9 @@ func (m *Manager) WebSearch() (on bool, backend, braveKey, tavilyKey, proxy stri
 // into each agent. Disabled when off, or when a keyed backend is selected without
 // its key (so a half-configured backend never silently drops the tool at session build).
 func (m *Manager) WebSearchOpts() agent.WebSearchOpts {
+	if agent.WebSearchDisabledByEnv() {
+		return agent.WebSearchOpts{}
+	}
 	on, backend, braveKey, tavilyKey, proxy := m.WebSearch()
 	if on && backend == "brave-free" && strings.TrimSpace(braveKey) == "" {
 		on = false
@@ -835,6 +841,9 @@ func (m *Manager) SetGlobalProxy(raw string) error {
 func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.enrich != nil {
+		m.enrich.Close()
+	}
 	if m.traffic != nil {
 		m.traffic.Close()
 	}
@@ -869,6 +878,7 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 		Description: pt.Description, Goal: pt.Goal, CreatedAt: pt.CreatedAt.Unix(), Paused: pt.Paused, Queued: pt.Queued,
 		QueuedAt: unixNanoOrZero(pt.QueuedAt), QueueMode: pt.QueueMode,
 		CompletedAt: unixOrZero(pt.CompletedAt), Status: pt.Status, ParentRef: pt.ParentRef,
+		ExternalRef: pt.ExternalRef, IdempotencyKey: pt.IdempotencyKey,
 		LLMProfileID:  pt.LLMProfileID,
 		LLMProfileIDs: append([]int64(nil), pt.LLMProfileIDs...), ActiveLLMProfileID: pt.ActiveLLMProfileID, LLMRotate: pt.LLMRotate,
 		LLMChainRevision: pt.LLMChainRevision,
@@ -977,6 +987,40 @@ func (m *Manager) CreateTaskWithOptions(description, goal string, opts pgdb.Task
 	m.active = t.ID
 	m.mu.Unlock()
 	return t, nil
+}
+
+// CreateTaskIdempotent creates a task or returns the already-created live task
+// when opts.IdempotencyKey matches an existing non-deleted task.
+func (m *Manager) CreateTaskIdempotent(description, goal string, opts pgdb.TaskCreateOptions) (t *Task, created bool, err error) {
+	if len(opts.CompanyIDs) > 0 {
+		m.companyMu.Lock()
+		defer m.companyMu.Unlock()
+	}
+	pt, created, err := m.pg.CreateTaskWithOptionsIdempotent(description, goal, opts)
+	if err != nil {
+		return nil, false, err
+	}
+	id := strconv.FormatInt(pt.ID, 10)
+	if !created {
+		if existing, ok := m.Task(id); ok {
+			return existing, false, nil
+		}
+		t = taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor)
+		m.mu.Lock()
+		if existing, ok := m.tasks[id]; ok {
+			t = existing
+		} else {
+			m.tasks[id] = t
+		}
+		m.mu.Unlock()
+		return t, false, nil
+	}
+	t = taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor)
+	m.mu.Lock()
+	m.tasks[t.ID] = t
+	m.active = t.ID
+	m.mu.Unlock()
+	return t, true, nil
 }
 
 // RenameTaskCategory persists a category name and refreshes every live task DTO

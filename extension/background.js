@@ -90,9 +90,23 @@ function truncate(s) {
   return s.slice(0, MAX_BODY) + "\n... [truncated by extension]";
 }
 
+function normalizeHeaders(raw) {
+  const out = {};
+  if (Array.isArray(raw)) {
+    for (const h of raw) {
+      if (h && h.name) out[String(h.name).toLowerCase()] = String(h.value ?? "");
+    }
+  } else if (raw && typeof raw === "object") {
+    for (const [k, v] of Object.entries(raw)) {
+      out[String(k).toLowerCase()] = String(v ?? "");
+    }
+  }
+  return out;
+}
+
 async function queueExchange(info, response) {
-  const respHeaders = {};
-  for (const h of response.headers || []) respHeaders[h.name.toLowerCase()] = h.value;
+  const reqHeaders = normalizeHeaders(info.headers);
+  const respHeaders = normalizeHeaders(response.headers);
   const mime = respHeaders["content-type"] || "";
 
   let reqBody = info.postData || "";
@@ -117,7 +131,7 @@ async function queueExchange(info, response) {
     method: info.method,
     url: info.url,
     status: response.status || 0,
-    requestHeaders: info.headers || {},
+    requestHeaders: reqHeaders,
     requestBody: reqBody,
     responseHeaders: respHeaders,
     responseBody: respBody,

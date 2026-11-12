@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -345,12 +346,54 @@ func (s *Server) runCommandTool(ctx context.Context, key string, execRaw json.Ra
 	// Reuse the low-level run Bash also uses (via the Bash CoreTool.Call): it
 	// automatically inherits the safety floor/timeout/proxy env/output overflow. The tool is a peer of Bash sharing that low level, not routed through the Bash tool for the model to call.
 	bashIn, _ := json.Marshal(map[string]any{"command": cmd})
+	// Evaluate intercept rules against the rendered Bash command so custom
+	// command tools cannot bypass Bash safety/approval rules.
+	if msg := s.checkRenderedBashIntercept(ctx, bashIn); msg != "" {
+		return actool.Errorf(msg), nil
+	}
 	if spec.TimeoutMs > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeoutOr(spec.TimeoutMs, 120000))
 		defer cancel()
 	}
 	return actool.NewBash().Call(ctx, bashIn, tc)
+}
+
+func (s *Server) checkRenderedBashIntercept(ctx context.Context, bashIn []byte) string {
+	if s == nil || s.m == nil || s.m.interceptor == nil {
+		return ""
+	}
+	_, hasScope := intercept.TargetScopeFromContext(ctx)
+	if !hasScope && intercept.ConvIDFromContext(ctx) == 0 {
+		return "" // operator's custom-tool test endpoint (pgTestCustomTool)
+	}
+	ic := s.m.interceptor
+	ctx = intercept.WithCall(ctx, "Bash", bashIn)
+	var dec intercept.Decision
+	if ic.IsToolEnabled("Bash") {
+		var matched bool
+		dec, matched = ic.Match("Bash", bashIn)
+		if !matched {
+			dec, _ = ic.Judge(ctx, "Bash", bashIn)
+		}
+	} else if d, ok := ic.MatchBuiltin("Bash", bashIn); ok {
+		dec = d
+	}
+	switch dec.Action {
+	case "deny":
+		ic.Log(ctx, intercept.ConvIDFromContext(ctx), dec, "Bash", bashIn, "denied")
+		return guard.SystemBlockMessage(dec.Message)
+	case "allow":
+		ic.Log(ctx, intercept.ConvIDFromContext(ctx), dec, "Bash", bashIn, "allowed")
+	case "ask":
+		if ctx.Err() != nil {
+			return guard.SystemBlockMessage("work cancelled; platform safety controls blocked execution")
+		}
+		if !ic.HandleAsk(ctx, intercept.ConvIDFromContext(ctx), dec, "Bash", bashIn) {
+			return guard.SystemBlockMessage("manual approval not granted (user rejected or approval timed out)")
+		}
+	}
+	return ""
 }
 
 // ---------- script (Python only): temp file + stdin JSON + env ----------
@@ -360,6 +403,9 @@ func (s *Server) runScriptTool(ctx context.Context, key string, execRaw json.Raw
 	_ = json.Unmarshal(execRaw, &spec)
 	if strings.TrimSpace(spec.Code) == "" {
 		return actool.Errorf("script code is empty"), nil
+	}
+	if res := intercept.GateRenderedCommand(ctx, key, spec.Code); res.Code != "" {
+		return actool.Errorf(guard.TargetBlockMessage(res)), nil
 	}
 	interp := s.pythonInterpreter()
 	if interp == "" {
@@ -543,13 +589,23 @@ func identity(s string) string { return s }
 // shellQuote single-quotes a value for safe shell interpolation.
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-// renderTemplate replaces {name} placeholders with each param's rendered value.
+// renderTemplate replaces {name} placeholders with each param's rendered value in
+// a single deterministic pass so substituted values are never re-scanned as
+// template placeholders.
 func renderTemplate(tmpl string, params map[string]any, quote func(string) string) string {
-	out := tmpl
-	for k, v := range params {
-		out = strings.ReplaceAll(out, "{"+k+"}", quote(valToStr(v)))
+	if len(params) == 0 || !strings.ContainsRune(tmpl, '{') {
+		return tmpl
 	}
-	return out
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	pairs := make([]string, 0, len(keys)*2)
+	for _, k := range keys {
+		pairs = append(pairs, "{"+k+"}", quote(valToStr(params[k])))
+	}
+	return strings.NewReplacer(pairs...).Replace(tmpl)
 }
 
 // valToStr renders a param value: scalars as-is, arrays/objects as compact JSON.
