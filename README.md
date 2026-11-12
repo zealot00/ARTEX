@@ -256,6 +256,13 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 **LLM**: `export ANTHROPIC_API_KEY=sk-...` (or `OPENAI_API_KEY`); you can also fill it in on the UI's "LLM Configuration" page — which can add a local Ollama server as a keyless provider (format "Ollama", base URL default `http://127.0.0.1:11434/v1`, models loaded from the server).
 Optional: `ARTEX_LLM_PROVIDER` (anthropic | openai | openai-responses | ollama) / `ARTEX_LLM_MODEL` / `ARTEX_LLM_BASE_URL` / `ARTEX_LLM_PROXY`.
 
+**LLM endpoint isolation (optional hardening)**:
+- `ARTEX_LLM_HOST_ALLOWLIST`: comma-separated host, `host:port`, `.suffix`, or CIDR rules (e.g. `127.0.0.1:11434,.internal.corp,10.0.0.0/8`). When set, explicit `base_url` values are required and any empty/unlisted endpoint is rejected before touching public vendor endpoints or `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL`.
+- `ARTEX_LLM_REQUIRE_BASE_URL=1`: require an explicit `base_url` even without a host allowlist.
+- `ARTEX_LLM_DISABLE_ENV_FALLBACK=1`: disable automatic startup fallback to `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` when no active DB profile exists.
+- `ARTEX_DISABLE_WEB_SEARCH=1`: force-disable outbound `web_search` tool execution and settings tests.
+- All LLM and model-discovery HTTP clients refuse `30x` redirects so API keys and prompts never follow unexpected upstream redirects.
+
 **Base URL**: for the Anthropic format, enter the host **without** a `/v1` suffix (e.g. `https://api.anthropic.com`) — the provider appends `/v1/messages` itself, so a base ending in `/v1` becomes `https://api.anthropic.com/v1/v1/messages`. OpenAI-format providers append `/chat/completions` (or `/responses` for the `openai-responses` format), so their base **does** end in `/v1` (e.g. `https://api.openai.com/v1`).
 
 **Concurrency**: the number of work agents per task is configured in "System Settings" (default 3).
@@ -298,6 +305,15 @@ server {
 For a peer in that list, ARTEX reads `X-Forwarded-For` from the right and takes the first address that is not a trusted proxy; from any other peer the header is ignored. Trust only addresses of proxies you run: a trusted peer can claim any client address.
 
 > Only when SSE needs a different origin from the page (e.g. a dedicated subdomain) should you set `NEXT_PUBLIC_SSE_BASE` **at build time** (this variable is baked into the static bundle during `next build`; setting it at container runtime has no effect).
+
+### Work-order API & scoped machine keys (external agent integration)
+
+External orchestrators, ticketing pipelines, or coding agents can invoke ARTEX at the task/work-order level using scoped API keys (`artex_ak_...`) minted by an admin JWT session:
+
+- **Manage keys (Admin JWT only)**: `GET /api/api-keys`, `POST /api/api-keys` (returns the plaintext `secret` once), `DELETE /api/api-keys/{id}`.
+- **Available scopes**: `tasks:create`, `tasks:read`, `tasks:control`, `findings:read`, `chat:write`, `intercept:decide`. Machine keys are restricted to work-order routes and always return `403` on LLM profile, settings, custom-tool, workspace, skill, notification, key-management, and task-deletion endpoints.
+- **Idempotent work-order creation**: `POST /api/tasks` accepts `external_ref` and `idempotency_key` (or `Idempotency-Key` header), returning `200 OK` with the existing task on duplicate submission.
+- **Aggregated polling**: `GET /api/tasks/{id}/workorder` returns `{task, terminal, outcome, pending_approvals, pending_approval_count}` in one request, alongside `GET /api/exploration/findings?task={id}`, `GET /api/report?task={id}`, and SSE `GET /api/exploration/activity/stream?task={id}`.
 
 ---
 

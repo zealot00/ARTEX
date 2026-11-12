@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **LLM endpoint isolation & egress hardening**: added `ARTEX_LLM_HOST_ALLOWLIST`, `ARTEX_LLM_REQUIRE_BASE_URL`, `ARTEX_LLM_DISABLE_ENV_FALLBACK`, and `ARTEX_DISABLE_WEB_SEARCH` controls; blocked HTTP `30x` redirects on LLM and model-discovery clients; enforced proxy inheritance and validation in `POST /api/llm/models`; and added `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` to startup environment scrubbing.
+- **Scoped API keys & idempotent work-order API**: added `api_keys` (SHA-256 hashed `artex_ak_` keys with `tasks:create`, `tasks:read`, `tasks:control`, `findings:read`, `chat:write`, and `intercept:decide` scopes), admin key management endpoints (`/api/api-keys`), `external_ref` + `idempotency_key` support on `POST /api/tasks`, and aggregated `GET /api/tasks/{id}/workorder` polling for external agents.
+
+### Fixed
+
+- **Extension CDP header normalization**: normalized `response.headers` objects and lowercased `requestHeaders` in `extension/background.js`.
+- **Guard audit & nil-DB interceptor safety**: recorded `"allow"` audits only after interception passes, preserved blocked command names, and guarded `Interceptor.Judge` against a nil DB.
+- **Custom-tool & workspace containment**: made `renderTemplate` single-pass, gated rendered command/script targets before execution, and enforced `EvalSymlinks` ancestor containment in workspace and operator-image staging handlers.
+- **Lifecycle & CORS**: removed unused `enrich` worker initialization on `NewManager`, closed it cleanly on shutdown, and allowed `PATCH`, `Authorization`, `X-API-Key`, and `Idempotency-Key` in CORS preflights.
+
 ## [0.6.0] - 2026-11-12
 
 Machine-checked finding verification (S1), intercept decisions traced to their actor, configurable notification limits, prompt hardening and goal guards from the #124 agentic audit, the target gate (S3b phase 1 and step 2.1, off by default and API-only), intent claim leases, and checksum-verified tool downloads in the Docker image.
