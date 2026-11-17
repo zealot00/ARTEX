@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { SSProject, SSTask } from "@/lib/types";
 
 type SSStatus = {
@@ -34,11 +35,12 @@ const ASSET_TYPES: { key: string; label: string }[] = [
 ];
 
 export default function AssetSyncPage() {
+  const { t } = useI18n();
   return (
     <div className="p-4 md:p-6">
       <div className="mb-4">
-        <h1 className="font-semibold text-xl">Asset sync</h1>
-        <p className="text-muted-foreground text-sm">Sync assets into the store from external data sources</p>
+        <h1 className="font-semibold text-xl">{t("sync.title")}</h1>
+        <p className="text-muted-foreground text-sm">{t("sync.subtitle")}</p>
       </div>
       <Tabs defaultValue="scopesentry">
         <TabsList>

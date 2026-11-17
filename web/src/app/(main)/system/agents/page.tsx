@@ -39,6 +39,7 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { AgentEditor } from "@/components/agent-editor";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { Agent } from "@/lib/types";
 
 // AgentGridCard is one clickable tile opening the agent's editor drawer. Custom
@@ -207,6 +208,7 @@ function CreateAgentDialog({ onCreated }: { onCreated: (key: string) => void }) 
 }
 
 export default function AgentsPage() {
+  const { t } = useI18n();
   const [agents, setAgents] = React.useState<Agent[]>([]);
   const [editKey, setEditKey] = React.useState<string | null>(null);
 
@@ -223,9 +225,9 @@ export default function AgentsPage() {
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Agent</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{t("system.agents.title")}</h1>
           <p className="text-muted-foreground text-sm">
-            Prompts/configs for built-in agents, plus creating and managing custom conversational agents
+            {t("system.agents.subtitle")}
           </p>
         </div>
         <CreateAgentDialog

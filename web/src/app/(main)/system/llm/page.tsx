@@ -27,6 +27,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { LLMPoolMember, LLMPoolStatus, LLMProfile, LLMRetryOverride } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -826,6 +827,7 @@ function ProfileSheet({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function LLMPage() {
+  const { t } = useI18n();
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [pool, setPool] = React.useState<LLMPoolStatus | null>(null);
   const [poolOpen, setPoolOpen] = React.useState(false);
@@ -896,9 +898,9 @@ export default function LLMPage() {
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-semibold text-xl tracking-tight">LLM</h1>
+          <h1 className="font-semibold text-xl tracking-tight">{t("system.llm.title")}</h1>
           <p className="text-muted-foreground text-sm">
-            Format / model / rate-limit settings shared by all agents. Click a card to edit it; the starred card is the active profile.
+            {t("system.llm.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2">

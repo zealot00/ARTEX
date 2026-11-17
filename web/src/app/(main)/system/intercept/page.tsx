@@ -51,6 +51,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type {
   InterceptAction,
   InterceptRule,
@@ -440,6 +441,7 @@ function JudgeCard() {
 // ---- page ----
 
 export default function InterceptPage() {
+  const { t } = useI18n();
   const [rules, setRules]     = React.useState<InterceptRule[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [open, setOpen]       = React.useState(false);
@@ -609,9 +611,9 @@ export default function InterceptPage() {
       <div className="flex items-center gap-2.5">
         <ShieldAlertIcon className="h-5 w-5 shrink-0" />
         <div>
-          <h1 className="text-lg font-semibold leading-tight">Command interception</h1>
+          <h1 className="text-lg font-semibold leading-tight">{t("system.intercept.title")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Tools are matched against interception rules before execution; unmatched commands can be judged by the model fallback
+            {t("system.intercept.subtitle")}
           </p>
         </div>
       </div>

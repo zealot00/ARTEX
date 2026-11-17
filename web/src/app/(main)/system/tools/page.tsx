@@ -35,6 +35,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { Agent, Tool } from "@/lib/types";
 
 // Traffic tools are host tools gated by the global traffic capture switch: bindable, but
@@ -364,6 +365,7 @@ function ToolGridCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
 }
 
 export default function ToolsPage() {
+  const { t } = useI18n();
   const [tools, setTools] = React.useState<Tool[]>([]);
   const [agents, setAgents] = React.useState<Agent[]>([]);
   const [captureOn, setCaptureOn] = React.useState(false);
@@ -402,14 +404,14 @@ export default function ToolsPage() {
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Tools</h1>
-          <p className="text-muted-foreground text-sm">Descriptions/bindings for system tools, plus custom tools (command/script/http)</p>
+          <h1 className="text-xl font-semibold tracking-tight">{t("system.tools.title")}</h1>
+          <p className="text-muted-foreground text-sm">{t("system.tools.subtitle")}</p>
         </div>
         <div className="relative w-64">
           <SearchIcon className="text-muted-foreground absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2" />
           <Input
             className="h-8 pl-8 text-sm"
-            placeholder="Search tool name, description, agent…"
+            placeholder={t("system.tools.searchPlaceholder")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />

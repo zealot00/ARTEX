@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { MCPServer, MCPTool, Agent } from "@/lib/types";
 
 type Transport = "stdio" | "http" | "sse";
@@ -46,6 +47,7 @@ const emptyForm: FormState = {
 };
 
 export default function MCPPage() {
+  const { t } = useI18n();
   const [servers, setServers] = React.useState<MCPServer[]>([]);
   const [agents, setAgents] = React.useState<Agent[]>([]);
   const [visibility, setVisibility] = React.useState<Record<number, string[]>>({});
@@ -377,8 +379,8 @@ export default function MCPPage() {
   return (
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">MCP</h1>
-        <p className="text-muted-foreground text-sm">External MCP tool servers · visibility granted per agent</p>
+        <h1 className="text-xl font-semibold tracking-tight">{t("system.mcp.title")}</h1>
+        <p className="text-muted-foreground text-sm">{t("system.mcp.subtitle")}</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

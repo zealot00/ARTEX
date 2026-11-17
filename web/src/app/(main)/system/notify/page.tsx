@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { NotificationChannel, NotificationFilter, NotificationMeta } from "@/lib/types";
 
 import {
@@ -49,6 +50,7 @@ function limitInvalid(raw: string, max: number): boolean {
 // _components/channel-form.tsx, and the delivery log in _components/delivery-list.tsx —
 // they are split out because each stays readable on its own, whereas crammed into one file this page neared 1100 lines.
 export default function NotifyPage() {
+  const { t } = useI18n();
   const [meta, setMeta] = React.useState<NotificationMeta | null>(null);
   const [channels, setChannels] = React.useState<NotificationChannel[]>([]);
   const [tab, setTab] = React.useState<"channels" | "deliveries">("channels");
@@ -301,9 +303,9 @@ export default function NotifyPage() {
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Notifications</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{t("system.notify.title")}</h1>
           <p className="text-muted-foreground text-sm">
-            Push findings to DingTalk / Feishu / WeCom and other channels · each channel has its own delivery timing and filter rules
+            {t("system.notify.subtitle")}
           </p>
         </div>
         {meta && (
