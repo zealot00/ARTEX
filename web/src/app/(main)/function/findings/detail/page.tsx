@@ -22,6 +22,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import { statusMeta } from "@/lib/status";
 import type { Finding, FindingStatus, Severity } from "@/lib/types";
 
@@ -56,6 +57,7 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
 }
 
 function FindingDetailInner() {
+  const { t } = useI18n();
   const searchParams = useSearchParams();
   const id = searchParams.get("id") ?? "";
   const contextTaskId = searchParams.get("context_task") ?? "";
@@ -115,11 +117,11 @@ function FindingDetailInner() {
   if (!finding) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
-        <p className="text-muted-foreground">{loaded ? `Finding ${id} not found` : "Loading…"}</p>
+        <p className="text-muted-foreground">{loaded ? t("findingDetail.notFound", { id }) : t("common.loading")}</p>
         {loaded && (
           <Button asChild variant="outline">
             <Link href="/function/findings">
-              <ArrowLeftIcon /> Back to findings
+              <ArrowLeftIcon /> {t("findingDetail.backToFindings")}
             </Link>
           </Button>
         )}
@@ -127,7 +129,7 @@ function FindingDetailInner() {
     );
   }
 
-  const title = finding.name || finding.vulnclass || "Uncategorized";
+  const title = finding.name || finding.vulnclass || t("findingDetail.uncategorized");
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex flex-1 flex-col gap-0">

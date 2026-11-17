@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 
 import { TablePagination } from "@/components/table-pagination";
+import { useI18n } from "@/lib/i18n/provider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -673,6 +674,7 @@ function ApprovalTable({
 }
 
 export function ApprovalRecords({ taskId }: { taskId?: string }) {
+  const { t } = useI18n();
   const [rows, setRows] = React.useState<InterceptApprovalRow[]>([]);
   const [pendingRows, setPendingRows] = React.useState<InterceptPending[]>([]);
   const [page, setPage] = React.useState(1);
@@ -802,14 +804,14 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
       ...historyById.get(row.id),
       ...row,
     }));
-  const title = taskId ? "Interception approval" : "Approval records";
+  const title = taskId ? t("approvals.taskTitle") : t("approvals.title");
   return (
     <div className="flex min-w-0 flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <ClipboardListIcon className="size-5 text-muted-foreground" />
           <h1 className="font-semibold text-xl">{title}</h1>
-          {pending.length ? <Badge variant="secondary">{pending.length} pending</Badge> : null}
+          {pending.length ? <Badge variant="secondary">{t("approvals.pendingCount", { count: pending.length })}</Badge> : null}
         </div>
         <Button variant="outline" size="sm" onClick={() => void load(true)} disabled={loading || refreshing}>
           <RefreshCwIcon data-icon="inline-start" className={cn(refreshing && "animate-spin")} />

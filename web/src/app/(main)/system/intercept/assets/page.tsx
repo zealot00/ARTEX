@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { AssetInterceptKind, AssetInterceptRule } from "@/lib/types";
 
 // ---- kind metadata ----
@@ -90,6 +91,7 @@ function frontValidate(form: RuleForm): string | null {
 // ---- page ----
 
 export default function AssetInterceptPage() {
+  const { t } = useI18n();
   const [rules, setRules] = React.useState<AssetInterceptRule[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [open, setOpen] = React.useState(false);
@@ -180,9 +182,9 @@ export default function AssetInterceptPage() {
       <div className="flex items-center gap-2.5">
         <BanIcon className="h-5 w-5 shrink-0" />
         <div>
-          <h1 className="text-lg font-semibold leading-tight">Asset interception</h1>
+          <h1 className="text-lg font-semibold leading-tight">{t("assetIntercept.title")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Global asset blocklist: matching domains / IPs / URLs / networks are intercepted; no operations run against them
+            {t("assetIntercept.subtitle")}
           </p>
         </div>
       </div>

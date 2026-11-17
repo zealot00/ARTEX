@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { WorkspaceEntry, WorkspaceFile } from "@/lib/types";
 
 function fmtSize(n: number): string {
@@ -68,6 +69,7 @@ type EditState = {
 };
 
 export default function WorkspacePage() {
+  const { t } = useI18n();
   const [path, setPath] = React.useState("");
   const [entries, setEntries] = React.useState<WorkspaceEntry[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -97,7 +99,7 @@ export default function WorkspacePage() {
 
   const crumbs = React.useMemo(() => {
     const parts = path ? path.split("/") : [];
-    const acc: { name: string; path: string }[] = [{ name: "Workspace", path: "" }];
+    const acc: { name: string; path: string }[] = [{ name: t("workspace.rootName"), path: "" }];
     let cur = "";
     for (const part of parts) {
       cur = cur ? `${cur}/${part}` : part;
@@ -299,10 +301,10 @@ export default function WorkspacePage() {
               {edit.file.binary || edit.file.too_large ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
                   <p className="text-muted-foreground text-sm">
-                    {edit.file.too_large ? "File too large for online preview/editing." : "Binary file; online preview/editing is not supported."}
+                    {edit.file.too_large ? t("workspace.tooLargeHint") : t("workspace.binaryHint")}
                   </p>
                   <Button variant="outline" onClick={() => api.workspaceDownload(edit.file.path)}>
-                    <DownloadIcon /> Download file
+                    <DownloadIcon /> {t("workspace.downloadFile")}
                   </Button>
                 </div>
               ) : (
