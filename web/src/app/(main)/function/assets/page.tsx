@@ -20,6 +20,7 @@ import { toast } from "sonner";
 
 import { AssetDslSearch } from "@/components/asset-dsl-search";
 import { ScopeTextEditor } from "@/components/scope-text-editor";
+import { useI18n } from "@/lib/i18n/provider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -108,6 +109,7 @@ const TABS: { key: string; label: string; icon: LucideIcon }[] = [
 ];
 
 export default function AssetsPage() {
+  const { t } = useI18n();
   const [rows, setRows] = React.useState<Asset[]>([]);
   const [total, setTotal] = React.useState(0);
   const [companies, setCompanies] = React.useState<Company[]>([]);
@@ -316,19 +318,19 @@ export default function AssetsPage() {
     <div className="flex h-[calc(100vh-6rem)] min-h-0 flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Assets</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{t("assets.title")}</h1>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">
-            <span className="tabular-nums">{totalAssets}</span> assets in total
+            {t("assets.totalCount", { count: totalAssets })}
           </span>
           {selected.size > 0 && (
             <Button variant="destructive" size="sm" onClick={() => openDelete(Array.from(selected) as number[])}>
-              <Trash2Icon className="size-3.5" /> Delete selected ({selected.size})
+              <Trash2Icon className="size-3.5" /> {t("assets.deleteSelected", { count: selected.size })}
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
-            <RefreshCwIcon className={cn("size-4", loading && "animate-spin")} /> Refresh
+            <RefreshCwIcon className={cn("size-4", loading && "animate-spin")} /> {t("common.refresh")}
           </Button>
           <CompanyDialog onSaved={refresh} />
         </div>

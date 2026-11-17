@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { CommandRecord, ToolStat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -50,6 +51,7 @@ const PAGE_SIZES = [25, 50, 100];
 const CMD_MAX_LEN = 80;
 
 export default function CommandsPage() {
+  const { t } = useI18n();
   const [page, setPage] = React.useState(0);
   const [size, setSize] = React.useState(50);
   const [query, setQuery] = React.useState("");
@@ -130,7 +132,7 @@ export default function CommandsPage() {
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <TerminalIcon className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-xl font-semibold tracking-tight">Tool executions</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{t("commands.title")}</h1>
           <Badge variant="secondary">{total}</Badge>
         </div>
       </div>
@@ -140,14 +142,14 @@ export default function CommandsPage() {
         <div className="relative max-w-sm flex-1">
           <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search tools / arguments..."
+            placeholder={t("commands.searchPlaceholder")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="h-8 pl-8"
           />
         </div>
         <Input
-          placeholder="Task ID"
+          placeholder={t("commands.taskIdPlaceholder")}
           className="h-8 w-28"
           value={taskFilter}
           onChange={(e) => setTaskFilter(e.target.value.replace(/\D/g, ""))}

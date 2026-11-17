@@ -184,6 +184,30 @@ export const enMessages = {
 
   // Theme
   "theme.cycleAria": "Current theme: {mode}. Click to cycle themes",
+
+  // Traffic
+  "traffic.title": "Traffic",
+  "traffic.subtitle": "Global recording proxy · all HTTP traffic",
+  "traffic.searchPlaceholder": "Search everything (URL / method / type / status…)",
+
+  // Assets
+  "assets.title": "Assets",
+  "assets.totalCount": "{count} assets in total",
+  "assets.deleteSelected": "Delete selected ({count})",
+
+  // Tool Executions
+  "commands.title": "Tool executions",
+  "commands.searchPlaceholder": "Search tools / arguments...",
+  "commands.taskIdPlaceholder": "Task ID",
+
+  // Task Detail: Report & Findings Tabs
+  "report.title": "Penetration test report (Markdown)",
+  "report.copy": "Copy",
+  "report.copiedToast": "Markdown copied",
+  "report.copyFailedToast": "Copy failed; please select the text and copy it manually",
+  "report.empty": "No report yet",
+  "taskFindings.discoveryTime": "Discovery time",
+  "taskFindings.empty": "No confirmed findings yet for this task or its directly linked tasks.",
   "tasks.detail.tab.overview": "Overview",
   "tasks.detail.tab.graph": "Exploration graph",
   "tasks.detail.tab.broadcast": "Broadcast",
@@ -407,6 +431,30 @@ export const zhCNMessages: Record<TranslationKey, string> = {
 
   // Theme
   "theme.cycleAria": "当前主题：{mode}，点击切换主题",
+
+  // Traffic
+  "traffic.title": "流量审计",
+  "traffic.subtitle": "全局录制代理 · 全量 HTTP 请求与响应流量",
+  "traffic.searchPlaceholder": "全局搜索（URL / 方法 / 类型 / 状态码…）",
+
+  // Assets
+  "assets.title": "资产管理",
+  "assets.totalCount": "共 {count} 项资产",
+  "assets.deleteSelected": "删除已选 ({count})",
+
+  // Tool Executions
+  "commands.title": "工具执行记录",
+  "commands.searchPlaceholder": "搜索工具名 / 命令参数...",
+  "commands.taskIdPlaceholder": "任务 ID",
+
+  // Task Detail: Report & Findings Tabs
+  "report.title": "渗透测试报告 (Markdown)",
+  "report.copy": "复制",
+  "report.copiedToast": "已复制 Markdown 报告",
+  "report.copyFailedToast": "复制失败，请手动选中文本复制",
+  "report.empty": "暂未生成报告",
+  "taskFindings.discoveryTime": "发现时间",
+  "taskFindings.empty": "当前任务及其关联任务暂无已确认漏洞。",
   "tasks.detail.tab.overview": "概览",
   "tasks.detail.tab.graph": "探索图谱",
   "tasks.detail.tab.broadcast": "实时广播",

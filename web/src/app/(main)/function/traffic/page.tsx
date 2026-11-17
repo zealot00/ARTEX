@@ -19,6 +19,7 @@ import { toast } from "sonner";
 
 import { HttpCodeBlock } from "@/components/http-code-block";
 import { LinkTrafficDialog } from "@/components/link-traffic-dialog";
+import { useI18n } from "@/lib/i18n/provider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -112,6 +113,7 @@ const SORT_STORAGE_KEY = "traffic-sort";
 const STATUS_BUCKETS = ["2xx", "3xx", "4xx", "5xx"];
 
 export default function TrafficPage() {
+  const { t } = useI18n();
   const [selectedFlows, setSelectedFlows] = React.useState<Set<string>>(() => new Set());
   const [linking, setLinking] = React.useState(false);
   const [page, setPage] = React.useState(0);
@@ -341,8 +343,8 @@ export default function TrafficPage() {
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Traffic</h1>
-          <p className="text-muted-foreground text-sm">Global recording proxy · all HTTP traffic</p>
+          <h1 className="text-xl font-semibold tracking-tight">{t("traffic.title")}</h1>
+          <p className="text-muted-foreground text-sm">{t("traffic.subtitle")}</p>
         </div>
         <div className="flex items-center gap-4 text-sm">
           <span
@@ -482,7 +484,7 @@ export default function TrafficPage() {
         <div className="relative max-w-sm flex-1">
           <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search everything (URL / method / type / status…)"
+            placeholder={t("traffic.searchPlaceholder")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="h-8 pl-8"

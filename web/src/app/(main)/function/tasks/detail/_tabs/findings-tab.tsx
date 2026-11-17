@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import { useStoredSortPreference } from "@/lib/sort-preference";
 import { statusMeta } from "@/lib/status";
 import type { Finding, FindingStatus } from "@/lib/types";
@@ -138,6 +139,7 @@ function Row({
 }
 
 export function FindingsTab({ taskId }: { taskId: string }) {
+  const { t } = useI18n();
   const [findings, setFindings] = React.useState<Finding[]>([]);
   const [sortPreference, setSortPreference] = useStoredSortPreference(
     FINDING_SORT_PREFERENCE_KEY,
@@ -203,7 +205,7 @@ export function FindingsTab({ taskId }: { taskId: string }) {
               }))
             }
           >
-            <span>Discovery time</span>
+            <span>{t("taskFindings.discoveryTime")}</span>
             {sortPreference.direction === "asc" ? (
               <ArrowUpIcon className="size-3.5" />
             ) : (
@@ -215,7 +217,7 @@ export function FindingsTab({ taskId }: { taskId: string }) {
           <Row key={f.id} f={f} contextTaskId={taskId} onStatus={onStatus} />
         ))}
         {items.length === 0 && (
-          <p className="px-4 py-8 text-center text-sm text-muted-foreground">No confirmed findings yet for this task or its directly linked tasks.</p>
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t("taskFindings.empty")}</p>
         )}
       </CardContent>
     </Card>
