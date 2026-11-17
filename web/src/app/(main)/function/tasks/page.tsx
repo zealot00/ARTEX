@@ -794,7 +794,7 @@ export default function TasksPage() {
               <div className="relative w-full sm:max-w-xs">
                 <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
                 <Input
-                  placeholder="Search description / goal / ID"
+                  placeholder={t("tasks.searchPlaceholder")}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   className="pl-8"
@@ -816,7 +816,7 @@ export default function TasksPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="all">{t("tasks.allStatuses")}</SelectItem>
                     {STATUS_OPTIONS.map((s) => (
                       <SelectItem key={s.value} value={s.value}>
                         {s.label}
@@ -3075,6 +3075,7 @@ function CreateTaskSheet({
   onCreated: () => void;
   onCategoriesChanged: () => void;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = React.useState(false);
   const [name, setName] = React.useState("");
   const [categoryID, setCategoryID] = React.useState<number | undefined>(undefined);
@@ -3195,7 +3196,7 @@ function CreateTaskSheet({
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button size="sm">
-          <PlusIcon /> New task
+          <PlusIcon /> {t("tasks.newTask")}
         </Button>
       </SheetTrigger>
       {/* A 45vw-wide right drawer: full-height and scrollable, so long forms are no longer bound by dialog height. Narrow screens fall back to full width.
@@ -3206,8 +3207,8 @@ function CreateTaskSheet({
         className="w-full! max-w-none! gap-0 p-0 sm:w-[45vw]! sm:max-w-[45vw]!"
       >
         <SheetHeader className="border-b p-6">
-          <SheetTitle>New task</SheetTitle>
-          <SheetDescription>Fill in the test target and goal; advanced parameters can be expanded as needed.</SheetDescription>
+          <SheetTitle>{t("tasks.newTask")}</SheetTitle>
+          <SheetDescription>{t("tasks.newTaskDesc")}</SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto p-6">

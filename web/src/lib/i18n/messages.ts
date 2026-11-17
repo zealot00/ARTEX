@@ -162,7 +162,28 @@ export const enMessages = {
   "tasks.tab.current": "Current tasks",
   "tasks.tab.archived": "Archived",
   "tasks.newTask": "New task",
+  "tasks.newTaskDesc": "Fill in the test target and goal; advanced parameters can be expanded as needed.",
+  "tasks.searchPlaceholder": "Search description / goal / ID",
+  "tasks.allStatuses": "All statuses",
+  "tasks.emptyCurrent": "No tasks yet. Click \"New task\" at the top right to start.",
   "tasks.detail.tab.sessions": "Sessions",
+
+  // Findings
+  "findings.title": "Findings",
+  "findings.subtitle": "Cross-task vulnerability overview",
+  "findings.tab.flat": "All findings",
+  "findings.tab.grouped": "By task",
+  "findings.tab.asset": "By asset",
+  "findings.searchPlaceholder": "Search findings",
+
+  // Chat
+  "chat.selectAgentPlaceholder": "Select an agent…",
+  "chat.startConversation": "Start a conversation with \"{name}\"",
+  "chat.composerPlaceholder": "Type a message, @ to reference records, Enter to send",
+  "chat.sendFailedToast": "Send failed: {error}",
+
+  // Theme
+  "theme.cycleAria": "Current theme: {mode}. Click to cycle themes",
   "tasks.detail.tab.overview": "Overview",
   "tasks.detail.tab.graph": "Exploration graph",
   "tasks.detail.tab.broadcast": "Broadcast",
@@ -364,7 +385,28 @@ export const zhCNMessages: Record<TranslationKey, string> = {
   "tasks.tab.current": "当前任务",
   "tasks.tab.archived": "已归档",
   "tasks.newTask": "新建任务",
+  "tasks.newTaskDesc": "填写测试目标与任务目的，高级参数可按需展开配置。",
+  "tasks.searchPlaceholder": "搜索描述 / 目标 / 任务 ID",
+  "tasks.allStatuses": "全部状态",
+  "tasks.emptyCurrent": "暂无任务，点击右上角「新建任务」开始。",
   "tasks.detail.tab.sessions": "执行会话",
+
+  // Findings
+  "findings.title": "漏洞发现",
+  "findings.subtitle": "跨任务漏洞总览与验证状态",
+  "findings.tab.flat": "全部漏洞",
+  "findings.tab.grouped": "按任务分组",
+  "findings.tab.asset": "按资产树",
+  "findings.searchPlaceholder": "搜索漏洞名称 / URL / 类型",
+
+  // Chat
+  "chat.selectAgentPlaceholder": "选择智能体…",
+  "chat.startConversation": "与「{name}」开始对话",
+  "chat.composerPlaceholder": "输入消息，使用 @ 引用工单/漏洞/资产，Enter 发送",
+  "chat.sendFailedToast": "发送失败：{error}",
+
+  // Theme
+  "theme.cycleAria": "当前主题：{mode}，点击切换主题",
   "tasks.detail.tab.overview": "概览",
   "tasks.detail.tab.graph": "探索图谱",
   "tasks.detail.tab.broadcast": "实时广播",

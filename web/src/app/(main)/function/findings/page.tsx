@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { FindingRetestDialog } from "@/components/finding-retest-dialog";
 import { StatusBadge } from "@/components/status-badge";
 import { TablePagination } from "@/components/table-pagination";
+import { useI18n } from "@/lib/i18n/provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -132,6 +133,7 @@ const EMPTY_STATS: FindingStats = {
 };
 
 export default function FindingsPage() {
+  const { t } = useI18n();
   const [view, setView] = React.useState<FindingView>("flat");
   const [severity, setSeverity] = React.useState<"all" | Severity>("all");
   const [status, setStatus] = React.useState<"all" | FindingStatus>("all");
@@ -844,14 +846,14 @@ export default function FindingsPage() {
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Findings</h1>
-          <p className="text-muted-foreground text-sm">Cross-task vulnerability overview</p>
+          <h1 className="text-xl font-semibold tracking-tight">{t("findings.title")}</h1>
+          <p className="text-muted-foreground text-sm">{t("findings.subtitle")}</p>
         </div>
         <Tabs value={view} onValueChange={(v) => setView(v as FindingView)}>
           <TabsList>
-            <TabsTrigger value="flat">All findings</TabsTrigger>
-            <TabsTrigger value="grouped">By task</TabsTrigger>
-            <TabsTrigger value="asset">By asset</TabsTrigger>
+            <TabsTrigger value="flat">{t("findings.tab.flat")}</TabsTrigger>
+            <TabsTrigger value="grouped">{t("findings.tab.grouped")}</TabsTrigger>
+            <TabsTrigger value="asset">{t("findings.tab.asset")}</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -879,8 +881,8 @@ export default function FindingsPage() {
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search findings"
-              aria-label="Search findings"
+              placeholder={t("findings.searchPlaceholder")}
+              aria-label={t("findings.searchPlaceholder")}
             />
             <InputGroupAddon>
               <SearchIcon aria-hidden="true" />

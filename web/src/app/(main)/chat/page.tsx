@@ -56,6 +56,7 @@ import { useSideQuestions } from "@/hooks/use-side-questions";
 import { mergeActivities } from "@/lib/activity-merge";
 import { api } from "@/lib/api";
 import { shouldSubmitOnKey, useChatSendMode } from "@/lib/chat-send-mode";
+import { useI18n } from "@/lib/i18n/provider";
 import { getLocalStorageValue, setLocalStorageValue } from "@/lib/local-storage.client";
 import { isBtwCommand } from "@/lib/side-questions";
 import type { Activity, Agent, ChatAttachment, Conversation, LLMProfile } from "@/lib/types";
@@ -373,6 +374,7 @@ function DraftChat({
   profiles: LLMProfile[];
   onStarted: (c: Conversation, pending?: { input?: string; attachments?: ChatAttachment[] }) => void;
 }) {
+  const { t } = useI18n();
   const [agentKey, setAgentKey] = React.useState("");
   const [llmProfileId, setLlmProfileId] = React.useState<number | null>(null);
   const [input, setInput] = React.useState("");
@@ -421,7 +423,7 @@ function DraftChat({
   const agentPicker = (
     <Select value={agentKey} onValueChange={setAgentKey}>
       <SelectTrigger className="w-full sm:w-40">
-        <SelectValue placeholder="Select an agent…" />
+        <SelectValue placeholder={t("chat.selectAgentPlaceholder")} />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
@@ -450,7 +452,7 @@ function DraftChat({
         <div className="bg-primary/10 flex size-12 items-center justify-center rounded-full">
           <Bot className="text-primary size-6" />
         </div>
-        <div className="text-sm font-medium">Start a conversation with "{agent?.name ?? "Agent"}"</div>
+        <div className="text-sm font-medium">{t("chat.startConversation", { name: agent?.name ?? "Agent" })}</div>
         {agent?.description && <p className="text-muted-foreground max-w-md text-xs">{agent.description}</p>}
       </div>
 
@@ -459,7 +461,7 @@ function DraftChat({
         onChange={setInput}
         onSend={send}
         disabled={sending || uploading || !agentKey}
-        placeholder="Type a message, @ to reference records, Enter to send"
+        placeholder={t("chat.composerPlaceholder")}
         leftSlot={agentPicker}
         onPickFiles={pickFiles}
         uploading={uploading}
