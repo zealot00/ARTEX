@@ -722,6 +722,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/tasks/{id}/checks/{code}", s.upsertTaskCheck)
 	mux.HandleFunc("GET /api/tasks/{id}/report/mlps", s.getMLPSReport)
 	mux.HandleFunc("POST /api/tasks/{id}/lateral/approve", s.approveTaskLateral)
+	mux.HandleFunc("GET /api/tasks/{id}/fence", s.getTaskFence)
+	mux.HandleFunc("PUT /api/tasks/{id}/fence", s.updateTaskFence)
 	mux.HandleFunc("GET /api/tasks/{id}/lessons", s.taskLessons)
 	mux.HandleFunc("POST /api/tasks/{id}/lessons/extract", s.extractTaskLessons)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTaskMetadata)
@@ -1623,6 +1625,8 @@ type createTaskReq struct {
 	LateralGate         *bool    `json:"lateral_gate,omitempty"`
 	WaitForTaskID       string   `json:"wait_for_task_id,omitempty"`
 	FootholdVulnClasses []string `json:"foothold_vuln_classes,omitempty"`
+	FenceEnabled        *bool    `json:"fence_enabled,omitempty"`
+	FenceRules          []string `json:"fence_rules,omitempty"`
 }
 
 type taskCredentialReq struct {
@@ -1671,6 +1675,11 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		waitForTaskID = &wid
+	}
+	fenceEnabled, fenceRules, err := validateFenceInput(req.FenceEnabled, req.FenceRules)
+	if err != nil {
+		writeErr(w, 400, "invalid electronic fence: "+err.Error())
+		return
 	}
 	if len(req.LLMProfileIDs) == 0 && req.LLMProfileID != nil {
 		req.LLMProfileIDs = []int64{*req.LLMProfileID}
@@ -1731,6 +1740,8 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		LateralGate:            req.LateralGate,
 		AwaitingFootholdTaskID: waitForTaskID,
 		FootholdVulnClasses:    req.FootholdVulnClasses,
+		FenceEnabled:           &fenceEnabled,
+		FenceRules:             fenceRules,
 	})
 	if err != nil {
 		if errors.Is(err, db.ErrTaskCategoryInvalid) || errors.Is(err, db.ErrTaskCategoryNotFound) {
@@ -1749,6 +1760,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.applyProdSafeTaskSetup(t)
+	s.applyTaskFenceConstraint(t)
 	log.Printf("[task] created task #%s «%s» goal: %s", t.ID, req.Description, req.Goal)
 	// Task credentials (#3): rows land after the task row commits; a bad entry
 	// fails the whole request so the UI never shows a half-configured task.

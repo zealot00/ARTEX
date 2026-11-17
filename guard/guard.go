@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -44,6 +45,11 @@ type Guard struct {
 	prodSafe        atomic.Bool            // MLPS production-safe mode: blocks DoS/high-concurrency/destructive commands
 	lateralGate     atomic.Bool            // lateral movement requires explicit approval after foothold discovery
 	lateralApproved atomic.Bool
+
+	fenceMu         sync.RWMutex
+	fenceEnabled    bool
+	fenceRules      []FenceRule
+	fenceExemptions []string
 }
 
 // New creates a Guard without user-configured intercept rules (used for pentest
@@ -93,6 +99,63 @@ func (g *Guard) SetProdSafe(on bool) { g.prodSafe.Store(on) }
 func (g *Guard) SetLateralGate(gated, approved bool) {
 	g.lateralGate.Store(gated)
 	g.lateralApproved.Store(approved)
+}
+
+// SetFence configures the task's hard electronic fence (authorized boundary).
+func (g *Guard) SetFence(enabled bool, rules []FenceRule, exemptions ...string) {
+	g.fenceMu.Lock()
+	g.fenceEnabled = enabled
+	g.fenceRules = append([]FenceRule(nil), rules...)
+	g.fenceExemptions = append([]string(nil), exemptions...)
+	g.fenceMu.Unlock()
+}
+
+// CheckFence verifies every network target declared in toolName/input falls
+// inside the task's electronic fence when enabled.
+func (g *Guard) CheckFence(toolName string, input []byte) (bool, string) {
+	g.fenceMu.RLock()
+	enabled := g.fenceEnabled
+	rules := g.fenceRules
+	exemptions := g.fenceExemptions
+	g.fenceMu.RUnlock()
+	if !enabled {
+		return false, ""
+	}
+	for _, t := range intercept.ExtractTargets(toolName, input) {
+		if ok, reason := CheckFenceTarget(rules, exemptions, t); !ok {
+			return true, reason
+		}
+	}
+	return false, ""
+}
+
+// CheckURLAllowed checks a single URL (e.g. an HTTP redirect hop) against the electronic fence.
+func (g *Guard) CheckURLAllowed(rawURL string) error {
+	g.fenceMu.RLock()
+	enabled := g.fenceEnabled
+	rules := g.fenceRules
+	exemptions := g.fenceExemptions
+	g.fenceMu.RUnlock()
+	if !enabled {
+		return nil
+	}
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return fmt.Errorf("electronic fence: invalid URL %q", rawURL)
+	}
+	t, ok := intercept.NormalizeTarget(rawURL)
+	if !ok {
+		return fmt.Errorf("electronic fence: unrecognized target in URL %q", rawURL)
+	}
+	if isExemptTarget(exemptions, t) {
+		return nil
+	}
+	for _, r := range rules {
+		if r.matchesURL(u) {
+			return nil
+		}
+	}
+	return fmt.Errorf("electronic fence: URL %q is outside authorized scope", rawURL)
 }
 
 func extractAuditCommand(toolName string, input []byte) string {
@@ -154,6 +217,9 @@ func (g *Guard) gateScope(ctx context.Context) (intercept.TargetScope, bool) {
 // rule or by the judge does not satisfy the gate; an ask and an unpinned target
 // share one approval request.
 func (g *Guard) applyIntercept(ctx context.Context, ev hook.Event, cmd string) hook.Result {
+	if blocked, reason := g.CheckFence(ev.ToolName, ev.Input); blocked {
+		return g.block(ev.ToolName, systemBlockMessage(reason), cmd)
+	}
 	if g.prodSafe.Load() && cmd != "" {
 		if reason, blocked := CheckProdSafeCommand(cmd); blocked {
 			return g.block(ev.ToolName, systemBlockMessage(reason), cmd)

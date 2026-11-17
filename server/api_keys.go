@@ -73,11 +73,14 @@ func authorizeTaskAPIKeyRoute(method string, tail []string) (string, bool) {
 			return db.ScopeTasksControl, true
 		}
 		switch tail[1] {
-		case "outcome", "workorder", "coverage", "coverage-graph", "scope", "goals", "constraints", "checks":
+		case "outcome", "workorder", "coverage", "coverage-graph", "scope", "goals", "constraints", "checks", "fence":
 			if method == http.MethodGet {
 				return db.ScopeTasksRead, true
 			}
 			if method == http.MethodPost && (tail[1] == "scope" || tail[1] == "goals" || tail[1] == "constraints") {
+				return db.ScopeTasksCreate, true
+			}
+			if method == http.MethodPut && tail[1] == "fence" {
 				return db.ScopeTasksCreate, true
 			}
 		case "credentials":

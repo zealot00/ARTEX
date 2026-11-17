@@ -58,7 +58,7 @@ type TaskCheckSummary struct {
 	Blocked int `json:"blocked"`
 }
 
-// MLPSBaselineChecks returns the 10 standard MLPS 2.0 penetration testing domains.
+// MLPSBaselineChecks returns the 12 standard MLPS 2.0 penetration testing domains.
 func MLPSBaselineChecks() []TaskCheckTemplate {
 	return []TaskCheckTemplate{
 		{Code: "NET-TLS", Domain: "安全通信网络", Title: "传输加密与 TLS 协议/弱密码套件/证书安全性检查"},
@@ -70,6 +70,8 @@ func MLPSBaselineChecks() []TaskCheckTemplate {
 		{Code: "WEB-XSS-CSRF", Domain: "应用安全-客户端与传输", Title: "XSS、CSRF、SSRF、任意文件上传/下载与路径遍历验证"},
 		{Code: "APP-API", Domain: "应用安全-接口与逻辑", Title: "API 未授权访问、文档/监控端点暴露、敏感信息泄漏与业务绕过"},
 		{Code: "SVC-UNAUTH", Domain: "安全计算环境-服务暴露", Title: "高危端口与中间件/数据库未授权访问（Redis/SMB/ES/Actuator 等）"},
+		{Code: "AD-DIR", Domain: "安全计算环境-目录与域控", Title: "LDAP/Kerberos 域环境匿名绑定、传输签名与目录权限基线检查"},
+		{Code: "WIN-SVC", Domain: "安全计算环境-Windows与打印服务", Title: "SMB/Samba 签名与共享权限、WinRM/RDP 暴露面及打印服务（IPP/Spooler）合规检查"},
 		{Code: "SEC-PROD-SAFE", Domain: "测试过程合规", Title: "生产安全基线核查（低并发限速、无 DoS/无破坏性操作）"},
 	}
 }

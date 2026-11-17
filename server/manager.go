@@ -56,6 +56,8 @@ type Task struct {
 	AwaitingFootholdTaskID *int64   `json:"awaiting_foothold_task_id,omitempty"`
 	FootholdVulnClasses    []string `json:"foothold_vuln_classes,omitempty"`
 	ParkedReason           string   `json:"parked_reason,omitempty"`
+	FenceEnabled           bool     `json:"fence_enabled"`
+	FenceRules             []string `json:"fence_rules,omitempty"`
 	LLMProfileID       *int64  `json:"llm_profile_id,omitempty"` // LLM profile to run this task's planner/worker; nil = use the globally active profile
 	LLMProfileIDs      []int64 `json:"llm_profile_ids,omitempty"`
 	ActiveLLMProfileID *int64  `json:"active_llm_profile_id,omitempty"`
@@ -891,6 +893,8 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 		AwaitingFootholdTaskID: cloneInt64Ptr(pt.AwaitingFootholdTaskID),
 		FootholdVulnClasses:    append([]string(nil), pt.FootholdVulnClasses...),
 		ParkedReason:           pt.ParkedReason,
+		FenceEnabled:           pt.FenceEnabled,
+		FenceRules:             append([]string(nil), pt.FenceRules...),
 		LLMProfileID:  pt.LLMProfileID,
 		LLMProfileIDs: append([]int64(nil), pt.LLMProfileIDs...), ActiveLLMProfileID: pt.ActiveLLMProfileID, LLMRotate: pt.LLMRotate,
 		LLMChainRevision: pt.LLMChainRevision,
@@ -913,7 +917,35 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 		t.Guard.SetLateralGate(true, pt.LateralApproved)
 		t.TargetGuard.SetLateralGate(true, pt.LateralApproved)
 	}
+	if pt.FenceEnabled {
+		if parsed, err := guard.ParseFenceRules(pt.FenceRules); err == nil {
+			t.Guard.SetFence(true, parsed)
+			t.TargetGuard.SetFence(true, parsed)
+		}
+	}
 	return t
+}
+
+func (m *Manager) applyTaskFence(t *Task) {
+	if t == nil {
+		return
+	}
+	t.lifecycleMu.RLock()
+	enabled := t.FenceEnabled
+	raw := append([]string(nil), t.FenceRules...)
+	t.lifecycleMu.RUnlock()
+	if !enabled {
+		t.Guard.SetFence(false, nil)
+		t.TargetGuard.SetFence(false, nil)
+		return
+	}
+	parsed, err := guard.ParseFenceRules(raw)
+	if err != nil {
+		log.Printf("[fence] task #%s invalid stored fence rules: %v", t.ID, err)
+		return
+	}
+	t.Guard.SetFence(true, parsed, m.ProxyAddr(), m.GlobalProxy())
+	t.TargetGuard.SetFence(true, parsed, m.ProxyAddr(), m.GlobalProxy())
 }
 
 // targetScope is the approval scope of this task's tool calls for the target
@@ -921,7 +953,17 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 // Enabled reads the task's opt-in flag on every call, so a switch through the
 // API takes effect on the next tool call.
 func (t *Task) targetScope(wait time.Duration) intercept.TargetScope {
-	return intercept.TargetScope{TaskID: t.ID, Enabled: t.targetGate.Load, WaitBound: wait, Interceptor: t.interceptor}
+	var fenceCheck func(string) error
+	if t.Guard != nil {
+		fenceCheck = t.Guard.CheckURLAllowed
+	}
+	return intercept.TargetScope{
+		TaskID:      t.ID,
+		Enabled:     t.targetGate.Load,
+		WaitBound:   wait,
+		Interceptor: t.interceptor,
+		FenceCheck:  fenceCheck,
+	}
 }
 
 // searchBackendEndpoints are the endpoints of the search backends. The
@@ -1002,6 +1044,7 @@ func (m *Manager) CreateTaskWithOptions(description, goal string, opts pgdb.Task
 		return nil, err
 	}
 	t := taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor)
+	m.applyTaskFence(t)
 	m.mu.Lock()
 	m.tasks[t.ID] = t
 	m.active = t.ID
@@ -1026,6 +1069,7 @@ func (m *Manager) CreateTaskIdempotent(description, goal string, opts pgdb.TaskC
 			return existing, false, nil
 		}
 		t = taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor)
+		m.applyTaskFence(t)
 		m.mu.Lock()
 		if existing, ok := m.tasks[id]; ok {
 			t = existing
@@ -1036,6 +1080,7 @@ func (m *Manager) CreateTaskIdempotent(description, goal string, opts pgdb.TaskC
 		return t, false, nil
 	}
 	t = taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor)
+	m.applyTaskFence(t)
 	m.mu.Lock()
 	m.tasks[t.ID] = t
 	m.active = t.ID
@@ -1235,6 +1280,7 @@ func (m *Manager) LoadExisting() []*Task {
 			continue
 		}
 		t := taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor)
+		m.applyTaskFence(t)
 		m.tasks[id] = t
 		loaded = append(loaded, t)
 	}

@@ -51,6 +51,8 @@ type Task struct {
 	AwaitingFootholdTaskID *int64     `json:"awaiting_foothold_task_id,omitempty"`
 	FootholdVulnClasses    []string   `json:"foothold_vuln_classes,omitempty"`
 	ParkedReason           string     `json:"parked_reason,omitempty"`
+	FenceEnabled           bool       `json:"fence_enabled"`
+	FenceRules             []string   `json:"fence_rules,omitempty"`
 	CreatedAt              time.Time  `json:"created_at"`
 	CompletedAt        *time.Time `json:"completed_at,omitempty"` // when it entered a terminal state (done/failed/timeout); nil for non-terminal
 	// Task-level timeout (see the task-level timeout and wrap-up design doc).
@@ -204,6 +206,10 @@ type TaskCreateOptions struct {
 	AwaitingFootholdTaskID *int64
 	// FootholdVulnClasses restricts which finding vuln classes unpark/trigger lateral movement (empty = default critical/high foothold classes).
 	FootholdVulnClasses []string
+	// FenceEnabled enforces a strict authorized boundary (electronic fence) over all network targets.
+	FenceEnabled *bool
+	// FenceRules lists authorized CIDRs, IPs, domains, wildcard domains, or URL prefixes.
+	FenceRules []string
 }
 
 // CreateTaskWithOptions creates an exploration, task, direct source relations,
@@ -293,6 +299,23 @@ VALUES ($1, 'fact', $2, 0, 'origin', 'system')`, expID, string(originPayload)); 
 		normClasses = []string{}
 	}
 	classesJSON, _ := json.Marshal(normClasses)
+	var normFence []string
+	seenFence := map[string]bool{}
+	for _, raw := range opts.FenceRules {
+		r := strings.TrimSpace(raw)
+		if r != "" && !seenFence[strings.ToLower(r)] {
+			seenFence[strings.ToLower(r)] = true
+			normFence = append(normFence, r)
+		}
+	}
+	if normFence == nil {
+		normFence = []string{}
+	}
+	fenceJSON, _ := json.Marshal(normFence)
+	fenceEnabled := len(normFence) > 0
+	if opts.FenceEnabled != nil {
+		fenceEnabled = *opts.FenceEnabled
+	}
 	t := &Task{
 		Name: opts.Name, CategoryID: opts.CategoryID, CategoryName: categoryName,
 		Description: description, Goal: goal, ExplorationID: expID,
@@ -309,6 +332,8 @@ VALUES ($1, 'fact', $2, 0, 'origin', 'system')`, expID, string(originPayload)); 
 		AwaitingFootholdTaskID: opts.AwaitingFootholdTaskID,
 		FootholdVulnClasses:    normClasses,
 		ParkedReason:           parkedReason,
+		FenceEnabled:           fenceEnabled,
+		FenceRules:             normFence,
 		TimeoutSeconds:         opts.TimeoutSeconds, PlanHeartbeatSeconds: opts.PlanHeartbeatSeconds,
 		PlanQuietMode:   quietMode,
 		CoverageEnabled: coverageEnabled,
@@ -319,9 +344,9 @@ VALUES ($1, 'fact', $2, 0, 'origin', 'system')`, expID, string(originPayload)); 
 	}
 	t.TargetGate = opts.TargetGate != nil && *opts.TargetGate
 	if err := tx.QueryRow(`
-INSERT INTO tasks(name, category_id, description, goal, exploration_id, llm_profile_id, active_llm_profile_id, timeout_seconds, plan_heartbeat_seconds, plan_quiet_mode, coverage_enabled, llm_rotate, target_gate, external_ref, idempotency_key, compliance_profile, prod_safe_mode, paused, lateral_gate, lateral_approved, awaiting_foothold_task_id, foothold_vuln_classes, parked_reason)
-VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,false,$19,$20::jsonb,$21)
-RETURNING id, status, paused, created_at`, opts.Name, opts.CategoryID, description, goal, expID, active, opts.TimeoutSeconds, opts.PlanHeartbeatSeconds, quietMode, coverageEnabled, rotate, t.TargetGate, opts.ExternalRef, opts.IdempotencyKey, opts.ComplianceProfile, prodSafe, parked, lateralGate, opts.AwaitingFootholdTaskID, string(classesJSON), parkedReason).Scan(&t.ID, &t.Status, &t.Paused, &t.CreatedAt); err != nil {
+INSERT INTO tasks(name, category_id, description, goal, exploration_id, llm_profile_id, active_llm_profile_id, timeout_seconds, plan_heartbeat_seconds, plan_quiet_mode, coverage_enabled, llm_rotate, target_gate, external_ref, idempotency_key, compliance_profile, prod_safe_mode, paused, lateral_gate, lateral_approved, awaiting_foothold_task_id, foothold_vuln_classes, parked_reason, fence_enabled, fence_rules)
+VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,false,$19,$20::jsonb,$21,$22,$23::jsonb)
+RETURNING id, status, paused, created_at`, opts.Name, opts.CategoryID, description, goal, expID, active, opts.TimeoutSeconds, opts.PlanHeartbeatSeconds, quietMode, coverageEnabled, rotate, t.TargetGate, opts.ExternalRef, opts.IdempotencyKey, opts.ComplianceProfile, prodSafe, parked, lateralGate, opts.AwaitingFootholdTaskID, string(classesJSON), parkedReason, fenceEnabled, string(fenceJSON)).Scan(&t.ID, &t.Status, &t.Paused, &t.CreatedAt); err != nil {
 		return nil, err
 	}
 	if err := seedTaskChecksTx(tx, t.ID, opts.ComplianceProfile); err != nil {
@@ -440,19 +465,32 @@ func insertTaskLLMProfiles(tx *sql.Tx, taskID int64, profileIDs []int64) error {
 
 const taskCols = `id, COALESCE(name,''), category_id,
 COALESCE((SELECT category.name FROM task_categories category WHERE category.id=tasks.category_id),''),
-description, goal, exploration_id, status, paused, queued, queued_at, COALESCE(queue_mode,''), llm_profile_id, active_llm_profile_id, COALESCE(parent_ref,''), COALESCE(external_ref,''), COALESCE(idempotency_key,''), COALESCE(compliance_profile,''), COALESCE(prod_safe_mode,false), COALESCE(lateral_gate,false), COALESCE(lateral_approved,false), awaiting_foothold_task_id, COALESCE(foothold_vuln_classes,'[]'::jsonb), COALESCE(parked_reason,''), pinned_at, created_at, completed_at, COALESCE(timeout_seconds,0), COALESCE(plan_heartbeat_seconds,300), COALESCE(plan_quiet_mode,true), COALESCE(coverage_enabled,true), COALESCE(llm_rotate,false), first_run_at, deadline_at, target_gate`
+description, goal, exploration_id, status, paused, queued, queued_at, COALESCE(queue_mode,''), llm_profile_id, active_llm_profile_id, COALESCE(parent_ref,''), COALESCE(external_ref,''), COALESCE(idempotency_key,''), COALESCE(compliance_profile,''), COALESCE(prod_safe_mode,false), COALESCE(lateral_gate,false), COALESCE(lateral_approved,false), awaiting_foothold_task_id, COALESCE(foothold_vuln_classes,'[]'::jsonb), COALESCE(parked_reason,''), COALESCE(fence_enabled,false), COALESCE(fence_rules,'[]'::jsonb), pinned_at, created_at, completed_at, COALESCE(timeout_seconds,0), COALESCE(plan_heartbeat_seconds,300), COALESCE(plan_quiet_mode,true), COALESCE(coverage_enabled,true), COALESCE(llm_rotate,false), first_run_at, deadline_at, target_gate`
 
 func scanTask(sc interface{ Scan(...any) error }) (*Task, error) {
 	var t Task
-	var rawClasses []byte
-	if err := sc.Scan(&t.ID, &t.Name, &t.CategoryID, &t.CategoryName, &t.Description, &t.Goal, &t.ExplorationID, &t.Status, &t.Paused, &t.Queued, &t.QueuedAt, &t.QueueMode, &t.LLMProfileID, &t.ActiveLLMProfileID, &t.ParentRef, &t.ExternalRef, &t.IdempotencyKey, &t.ComplianceProfile, &t.ProdSafeMode, &t.LateralGate, &t.LateralApproved, &t.AwaitingFootholdTaskID, &rawClasses, &t.ParkedReason, &t.PinnedAt, &t.CreatedAt, &t.CompletedAt, &t.TimeoutSeconds, &t.PlanHeartbeatSeconds, &t.PlanQuietMode, &t.CoverageEnabled, &t.LLMRotate, &t.FirstRunAt, &t.DeadlineAt, &t.TargetGate); err != nil {
+	var rawClasses, rawFence []byte
+	if err := sc.Scan(&t.ID, &t.Name, &t.CategoryID, &t.CategoryName, &t.Description, &t.Goal, &t.ExplorationID, &t.Status, &t.Paused, &t.Queued, &t.QueuedAt, &t.QueueMode, &t.LLMProfileID, &t.ActiveLLMProfileID, &t.ParentRef, &t.ExternalRef, &t.IdempotencyKey, &t.ComplianceProfile, &t.ProdSafeMode, &t.LateralGate, &t.LateralApproved, &t.AwaitingFootholdTaskID, &rawClasses, &t.ParkedReason, &t.FenceEnabled, &rawFence, &t.PinnedAt, &t.CreatedAt, &t.CompletedAt, &t.TimeoutSeconds, &t.PlanHeartbeatSeconds, &t.PlanQuietMode, &t.CoverageEnabled, &t.LLMRotate, &t.FirstRunAt, &t.DeadlineAt, &t.TargetGate); err != nil {
 		return nil, err
 	}
 	if len(rawClasses) > 0 {
 		_ = json.Unmarshal(rawClasses, &t.FootholdVulnClasses)
 	}
+	if len(rawFence) > 0 {
+		_ = json.Unmarshal(rawFence, &t.FenceRules)
+	}
 	t.Pinned = t.PinnedAt != nil
 	return &t, nil
+}
+
+// SetTaskFence updates a task's electronic-fence toggle and rules.
+func (d *DB) SetTaskFence(id int64, enabled bool, rules []string) error {
+	if rules == nil {
+		rules = []string{}
+	}
+	b, _ := json.Marshal(rules)
+	_, err := d.Exec(`UPDATE tasks SET fence_enabled=$2, fence_rules=$3::jsonb WHERE id=$1 AND deleted_at IS NULL`, id, enabled, string(b))
+	return err
 }
 
 // SetTaskLateralState persists lateral approval and parked_reason updates.

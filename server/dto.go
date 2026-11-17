@@ -67,6 +67,8 @@ type TaskDTO struct {
 	LateralApproved    bool               `json:"lateral_approved"`
 	WaitForTaskID      *int64             `json:"wait_for_task_id,omitempty"`
 	ParkedReason       string             `json:"parked_reason,omitempty"`
+	FenceEnabled       bool               `json:"fence_enabled"`
+	FenceRules         []string           `json:"fence_rules,omitempty"`
 	ArchiveBlockedBy   string             `json:"archive_blocked_by_task_id,omitempty"`
 	CompanyIDs         []int64            `json:"company_ids"`
 	CoverageEnabled    bool               `json:"coverage_enabled"` // asset coverage feature switch (fixed at creation)
@@ -152,6 +154,8 @@ func taskDTO(t *Task, status string) TaskDTO {
 		LateralApproved:    t.LateralApproved,
 		WaitForTaskID:      t.AwaitingFootholdTaskID,
 		ParkedReason:       t.ParkedReason,
+		FenceEnabled:       t.FenceEnabled,
+		FenceRules:         append([]string(nil), t.FenceRules...),
 		CompanyIDs:         lifecycle.CompanyIDs,
 		CoverageEnabled:    t.CoverageEnabled,
 		PlanQuietMode:      t.PlanQuietMode,

@@ -4,8 +4,8 @@ import "testing"
 
 func TestMLPSBaselineChecksAndSummary(t *testing.T) {
 	tpls := MLPSBaselineChecks()
-	if len(tpls) != 10 {
-		t.Fatalf("expected 10 MLPS baseline checks, got %d", len(tpls))
+	if len(tpls) != 12 {
+		t.Fatalf("expected 12 MLPS baseline checks, got %d", len(tpls))
 	}
 	seen := map[string]bool{}
 	for _, tpl := range tpls {

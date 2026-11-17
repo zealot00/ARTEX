@@ -313,9 +313,35 @@ External orchestrators, ticketing pipelines, or coding agents can invoke ARTEX a
 - **Manage keys (Admin JWT only)**: `GET /api/api-keys`, `POST /api/api-keys` (returns the plaintext `secret` once), `DELETE /api/api-keys/{id}`.
 - **Available scopes**: `tasks:create`, `tasks:read`, `tasks:control`, `findings:read`, `chat:write`, `intercept:decide`. Machine keys are restricted to work-order routes and always return `403` on LLM profile, settings, custom-tool, workspace, skill, notification, key-management, and task-deletion endpoints.
 - **Idempotent work-order creation**: `POST /api/tasks` accepts `external_ref` and `idempotency_key` (or `Idempotency-Key` header), returning `200 OK` with the existing task on duplicate submission.
-- **MLPS 2.0 compliance mode & negative-test matrix**: pass `compliance_profile: "mlps"` (and/or `prod_safe_mode: true`) on `POST /api/tasks` to seed the 10-domain MLPS 2.0 penetration checklist (`task_checks`), enforce production-safe Guard rules (blocking DoS/stress tools, destructive SQL, and excessive `ffuf`/`hydra` concurrency), record both positive findings and negative `"passed"` evidence (`record_check_result`, `GET /api/tasks/{id}/checks`, `PUT /api/tasks/{id}/checks/{code}`), and export an MLPS 2.0 Markdown report via `GET /api/tasks/{id}/report/mlps`.
+- **MLPS 2.0 compliance mode & negative-test matrix**: pass `compliance_profile: "mlps"` (and/or `prod_safe_mode: true`) on `POST /api/tasks` to seed the 12-domain MLPS 2.0 penetration checklist (`task_checks`, including `AD-DIR` and `WIN-SVC` for directory/SMB/print services), enforce production-safe Guard rules (blocking DoS/stress tools, destructive SQL, and excessive `ffuf`/`hydra` concurrency), record both positive findings and negative `"passed"` evidence (`record_check_result`, `GET /api/tasks/{id}/checks`, `PUT /api/tasks/{id}/checks/{code}`), and export an MLPS 2.0 Markdown report via `GET /api/tasks/{id}/report/mlps`.
 - **Foothold-gated lateral movement (zero-waste parking)**: create a standby lateral work order with `wait_for_task_id` (and optional `foothold_vuln_classes`, `lateral_gate: true`) so it stays parked in `paused` state with zero LLM/slot consumption until the upstream task confirms a qualifying foothold finding; or enable `lateral_gate: true` on a single task to block pivot/tunnel tools (`proxychains4`, `socat`, `chisel`, `ssh -D/-L/-R`, `impacket-*`) and pause on foothold discovery until `POST /api/tasks/{id}/lateral/approve` resumes it in-place without resetting state.
+- **Electronic fence (strict scope geofence)**: pass `fence_rules` (CIDRs, IPs, domains, `*.domain` wildcards, or URL prefixes) and `fence_enabled: true` on `POST /api/tasks` (or update via `GET`/`PUT /api/tasks/{id}/fence`) to hard-block any tool target, broader CIDR scan, or `30x` HTTP redirect outside the authorized boundary across Planner, Workers, and MainAgent.
 - **Aggregated polling**: `GET /api/tasks/{id}/workorder` returns `{task, terminal, outcome, pending_approvals, pending_approval_count}` in one request, alongside `GET /api/exploration/findings?task={id}`, `GET /api/report?task={id}`, and SSE `GET /api/exploration/activity/stream?task={id}`.
+
+Example (internal MLPS assessment with electronic fence + foothold-gated lateral stage):
+
+```bash
+# 1. Dispatch a fenced internal MLPS assessment
+curl -X POST http://127.0.0.1:8787/api/tasks \
+  -H "X-API-Key: artex_ak_..." \
+  -H "Idempotency-Key: mlps-2026-internal-01" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Core-Biz-MLPS",
+    "external_ref": "SEC-2026-01",
+    "description": "Internal business app + AD/SMB/Print audit",
+    "goal": "Complete 12 MLPS 2.0 domains without leaving the authorized boundary",
+    "compliance_profile": "mlps",
+    "prod_safe_mode": true,
+    "lateral_gate": true,
+    "fence_enabled": true,
+    "fence_rules": ["10.10.0.0/16", "*.corp.local", "https://portal.corp.local:8443"]
+  }'
+
+# 2. Approve lateral movement in-place after foothold confirmation & export MLPS report
+curl -X POST -H "X-API-Key: artex_ak_..." http://127.0.0.1:8787/api/tasks/1/lateral/approve
+curl -H "X-API-Key: artex_ak_..." http://127.0.0.1:8787/api/tasks/1/report/mlps
+```
 
 ---
 

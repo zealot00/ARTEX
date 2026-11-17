@@ -42,6 +42,11 @@ func RedirectCheck(toolName string) func(req *http.Request, via []*http.Request)
 			return errors.New("stopped after 10 redirects")
 		}
 		ctx := req.Context()
+		if sc, ok := TargetScopeFromContext(ctx); ok && sc.FenceCheck != nil {
+			if err := sc.FenceCheck(req.URL.String()); err != nil {
+				return err
+			}
+		}
 		scope, on := renderedScope(ctx)
 		if !on {
 			return nil

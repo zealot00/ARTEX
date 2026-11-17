@@ -111,6 +111,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       dnsutils iputils-ping netcat-openbsd inetutils-telnet whois nmap \
       hydra sslscan smbclient redis-tools postgresql-client default-mysql-client \
       openssh-client proxychains4 socat \
+      ldap-utils krb5-user snmp cups-client iproute2 \
     && rm -rf /var/lib/apt/lists/*
 # Node 22 from the official nodejs.org tarball, verified against its SHASUMS256.txt:
 # bookworm's apt nodejs is 18, Playwright requires >=20, and 20 is end-of-life.

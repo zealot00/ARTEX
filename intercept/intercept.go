@@ -96,6 +96,7 @@ type TargetScope struct {
 	Enabled        func() bool
 	WaitBound      time.Duration
 	Interceptor    *Interceptor
+	FenceCheck     func(rawURL string) error
 }
 
 // WithTargetScope returns a child context carrying the target-gate scope of the

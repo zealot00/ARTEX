@@ -15,8 +15,8 @@ var lateralCommandRules = []prodSafeRule{
 		reason: "SSH tunnel/pivot (-D/-L/-R) is gated until lateral movement is approved",
 	},
 	{
-		re:     regexp.MustCompile(`(?i)\b(?:impacket-\S+|crackmapexec|netexec|nxc|evil-winrm)\b`),
-		reason: "internal lateral-movement tool is gated until lateral movement is approved",
+		re:     regexp.MustCompile(`(?i)\b(?:impacket-\S+|crackmapexec|netexec|nxc|evil-winrm|bloodhound-python|certipy|adidnsdump)\b`),
+		reason: "internal directory/lateral-movement tool is gated until lateral movement is approved",
 	},
 }
 
