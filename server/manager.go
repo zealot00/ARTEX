@@ -49,6 +49,13 @@ type Task struct {
 	ParentRef          string  `json:"parent_ref,omitempty"`     // parent task id (orchestration spawn record)
 	ExternalRef        string  `json:"external_ref,omitempty"`   // external work-order / ticket reference
 	IdempotencyKey     string  `json:"idempotency_key,omitempty"`
+	ComplianceProfile      string   `json:"compliance_profile,omitempty"`
+	ProdSafeMode           bool     `json:"prod_safe_mode"`
+	LateralGate            bool     `json:"lateral_gate"`
+	LateralApproved        bool     `json:"lateral_approved"`
+	AwaitingFootholdTaskID *int64   `json:"awaiting_foothold_task_id,omitempty"`
+	FootholdVulnClasses    []string `json:"foothold_vuln_classes,omitempty"`
+	ParkedReason           string   `json:"parked_reason,omitempty"`
 	LLMProfileID       *int64  `json:"llm_profile_id,omitempty"` // LLM profile to run this task's planner/worker; nil = use the globally active profile
 	LLMProfileIDs      []int64 `json:"llm_profile_ids,omitempty"`
 	ActiveLLMProfileID *int64  `json:"active_llm_profile_id,omitempty"`
@@ -879,6 +886,11 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 		QueuedAt: unixNanoOrZero(pt.QueuedAt), QueueMode: pt.QueueMode,
 		CompletedAt: unixOrZero(pt.CompletedAt), Status: pt.Status, ParentRef: pt.ParentRef,
 		ExternalRef: pt.ExternalRef, IdempotencyKey: pt.IdempotencyKey,
+		ComplianceProfile: pt.ComplianceProfile, ProdSafeMode: pt.ProdSafeMode,
+		LateralGate: pt.LateralGate, LateralApproved: pt.LateralApproved,
+		AwaitingFootholdTaskID: cloneInt64Ptr(pt.AwaitingFootholdTaskID),
+		FootholdVulnClasses:    append([]string(nil), pt.FootholdVulnClasses...),
+		ParkedReason:           pt.ParkedReason,
 		LLMProfileID:  pt.LLMProfileID,
 		LLMProfileIDs: append([]int64(nil), pt.LLMProfileIDs...), ActiveLLMProfileID: pt.ActiveLLMProfileID, LLMRotate: pt.LLMRotate,
 		LLMChainRevision: pt.LLMChainRevision,
@@ -893,6 +905,14 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 		interceptor: ic,
 	}
 	t.targetGate.Store(pt.TargetGate)
+	if pt.ProdSafeMode {
+		t.Guard.SetProdSafe(true)
+		t.TargetGuard.SetProdSafe(true)
+	}
+	if pt.LateralGate {
+		t.Guard.SetLateralGate(true, pt.LateralApproved)
+		t.TargetGuard.SetLateralGate(true, pt.LateralApproved)
+	}
 	return t
 }
 

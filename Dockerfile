@@ -105,10 +105,12 @@ RUN set -eux; \
 # ---------------------------------------------------------------- runtime ---
 FROM python:3.12-slim-bookworm
 ARG TARGETARCH
-# Common tools: ripgrep / curl / vim, plus a set of recon staples (add/remove as needed).
+# Common tools: ripgrep / curl / vim, plus recon and MLPS service-audit staples (add/remove as needed).
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates ripgrep curl wget vim git jq unzip xz-utils \
       dnsutils iputils-ping netcat-openbsd inetutils-telnet whois nmap \
+      hydra sslscan smbclient redis-tools postgresql-client default-mysql-client \
+      openssh-client proxychains4 socat \
     && rm -rf /var/lib/apt/lists/*
 # Node 22 from the official nodejs.org tarball, verified against its SHASUMS256.txt:
 # bookworm's apt nodejs is 18, Playwright requires >=20, and 20 is end-of-life.

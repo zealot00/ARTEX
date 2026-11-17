@@ -718,6 +718,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tasks/{id}", s.getTask)
 	mux.HandleFunc("GET /api/tasks/{id}/outcome", s.taskOutcome)
 	mux.HandleFunc("GET /api/tasks/{id}/workorder", s.taskWorkOrder)
+	mux.HandleFunc("GET /api/tasks/{id}/checks", s.listTaskChecks)
+	mux.HandleFunc("PUT /api/tasks/{id}/checks/{code}", s.upsertTaskCheck)
+	mux.HandleFunc("GET /api/tasks/{id}/report/mlps", s.getMLPSReport)
+	mux.HandleFunc("POST /api/tasks/{id}/lateral/approve", s.approveTaskLateral)
 	mux.HandleFunc("GET /api/tasks/{id}/lessons", s.taskLessons)
 	mux.HandleFunc("POST /api/tasks/{id}/lessons/extract", s.extractTaskLessons)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTaskMetadata)
@@ -1611,9 +1615,14 @@ type createTaskReq struct {
 	InterceptRules []taskInterceptRuleReq `json:"intercept_rules,omitempty"`
 	// Credentials: test accounts declared at creation (#3). An empty password means
 	// "agent generates": the agent registers that account and records it back.
-	Credentials    []taskCredentialReq `json:"credentials,omitempty"`
-	ExternalRef    string              `json:"external_ref,omitempty"`
-	IdempotencyKey string              `json:"idempotency_key,omitempty"`
+	Credentials       []taskCredentialReq `json:"credentials,omitempty"`
+	ExternalRef       string              `json:"external_ref,omitempty"`
+	IdempotencyKey    string              `json:"idempotency_key,omitempty"`
+	ComplianceProfile   string   `json:"compliance_profile,omitempty"`
+	ProdSafeMode        *bool    `json:"prod_safe_mode,omitempty"`
+	LateralGate         *bool    `json:"lateral_gate,omitempty"`
+	WaitForTaskID       string   `json:"wait_for_task_id,omitempty"`
+	FootholdVulnClasses []string `json:"foothold_vuln_classes,omitempty"`
 }
 
 type taskCredentialReq struct {
@@ -1644,6 +1653,24 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	if len([]rune(req.IdempotencyKey)) > 128 {
 		writeErr(w, 400, "idempotency_key exceeds 128 characters")
 		return
+	}
+	req.ComplianceProfile = strings.ToLower(strings.TrimSpace(req.ComplianceProfile))
+	if req.ComplianceProfile != "" && req.ComplianceProfile != db.ComplianceProfileMLPS {
+		writeErr(w, 400, "compliance_profile must be empty or 'mlps'")
+		return
+	}
+	var waitForTaskID *int64
+	if rawWait := strings.TrimSpace(req.WaitForTaskID); rawWait != "" {
+		wid, err := strconv.ParseInt(rawWait, 10, 64)
+		if err != nil || wid <= 0 {
+			writeErr(w, 400, "invalid wait_for_task_id")
+			return
+		}
+		if _, ok := s.m.Task(strconv.FormatInt(wid, 10)); !ok {
+			writeErr(w, 400, fmt.Sprintf("wait_for_task_id #%d not found", wid))
+			return
+		}
+		waitForTaskID = &wid
 	}
 	if len(req.LLMProfileIDs) == 0 && req.LLMProfileID != nil {
 		req.LLMProfileIDs = []int64{*req.LLMProfileID}
@@ -1696,9 +1723,14 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		CoverageEnabled: req.CoverageEnabled,
 		InterceptRules:  interceptRules,
 		LLMRotate:       req.LLMRotate,
-		TargetGate:      req.TargetGate,
-		ExternalRef:     req.ExternalRef,
-		IdempotencyKey:  req.IdempotencyKey,
+		TargetGate:        req.TargetGate,
+		ExternalRef:       req.ExternalRef,
+		IdempotencyKey:    req.IdempotencyKey,
+		ComplianceProfile:      req.ComplianceProfile,
+		ProdSafeMode:           req.ProdSafeMode,
+		LateralGate:            req.LateralGate,
+		AwaitingFootholdTaskID: waitForTaskID,
+		FootholdVulnClasses:    req.FootholdVulnClasses,
 	})
 	if err != nil {
 		if errors.Is(err, db.ErrTaskCategoryInvalid) || errors.Is(err, db.ErrTaskCategoryNotFound) {
@@ -1716,6 +1748,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, taskDTO(t, s.resolvedTaskStatus(t)))
 		return
 	}
+	s.applyProdSafeTaskSetup(t)
 	log.Printf("[task] created task #%s «%s» goal: %s", t.ID, req.Description, req.Goal)
 	// Task credentials (#3): rows land after the task row commits; a bad entry
 	// fails the whole request so the UI never shows a half-configured task.
@@ -1732,8 +1765,12 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// Shared post-create flow (seed + seed intent + background goal decomposition + engine.Run), reusing the same launchTask as spawn_task.
-	// launchTask is async internally and never blocks the UI — goal decomposition visibly proceeds in the background.
-	s.launchTask(t, req.Description+" "+req.Goal, req.SeedFirstIntent != nil && *req.SeedFirstIntent)
+	// Standby lateral tasks parked on wait_for_task_id stay paused with zero LLM/slot consumption until a foothold finding unlocks them.
+	if t.AwaitingFootholdTaskID != nil {
+		s.engine.Pause(t.ID, agent.AbortPausedByUser)
+	} else {
+		s.launchTask(t, req.Description+" "+req.Goal, req.SeedFirstIntent != nil && *req.SeedFirstIntent)
+	}
 	writeJSON(w, 201, taskDTO(t, s.resolvedTaskStatus(t)))
 }
 

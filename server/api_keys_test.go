@@ -62,6 +62,18 @@ func TestAPIKeyAuthScopesAndAdminIsolation(t *testing.T) {
 	if code := call(http.MethodGet, "/api/report?task=12", "Authorization", "Bearer artex_ak_reader"); code != http.StatusOK {
 		t.Fatalf("reader report status=%d want 200", code)
 	}
+	if code := call(http.MethodGet, "/api/tasks/12/checks", "X-API-Key", "artex_ak_reader"); code != http.StatusOK {
+		t.Fatalf("reader checks status=%d want 200", code)
+	}
+	if code := call(http.MethodGet, "/api/tasks/12/report/mlps", "X-API-Key", "artex_ak_reader"); code != http.StatusOK {
+		t.Fatalf("reader mlps report status=%d want 200", code)
+	}
+	if code := call(http.MethodPut, "/api/tasks/12/checks/NET-TLS", "X-API-Key", "artex_ak_reader"); code != http.StatusForbidden {
+		t.Fatalf("reader put check status=%d want 403", code)
+	}
+	if code := call(http.MethodPut, "/api/tasks/12/checks/NET-TLS", "X-API-Key", "artex_ak_creator"); code != http.StatusOK {
+		t.Fatalf("creator put check status=%d want 200", code)
+	}
 	if code := call(http.MethodGet, "/api/exploration/activity/stream?task=12", "X-API-Key", "artex_ak_reader"); code != http.StatusOK {
 		t.Fatalf("reader stream status=%d want 200", code)
 	}

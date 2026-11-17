@@ -115,6 +115,7 @@ func (sc *Scheduler) init() {
 }
 
 func (sc *Scheduler) step() {
+	sc.reconcileFootholdParkings()
 	triggers, err := sc.pg.ListEnabledTriggers()
 	if err != nil {
 		return

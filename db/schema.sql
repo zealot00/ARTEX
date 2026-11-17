@@ -585,6 +585,13 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS llm_chain_revision BIGINT NOT NULL DE
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS external_ref TEXT NOT NULL DEFAULT '';
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS compliance_profile TEXT NOT NULL DEFAULT '';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS prod_safe_mode BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS lateral_gate BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS lateral_approved BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS awaiting_foothold_task_id BIGINT REFERENCES tasks(id) ON DELETE SET NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS foothold_vuln_classes JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parked_reason TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category_id, created_at DESC)
     WHERE deleted_at IS NULL AND category_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_tasks_pinned ON tasks(pinned_at DESC)
@@ -1590,3 +1597,28 @@ CREATE TABLE IF NOT EXISTS api_keys (
     revoked_at   TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(key_hash) WHERE revoked_at IS NULL;
+
+-- =====================================================================
+-- Task compliance checklist & negative-test evidence (MLPS 2.0)
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS task_checks (
+    id         BIGSERIAL PRIMARY KEY,
+    task_id    BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    check_code TEXT NOT NULL,
+    domain     TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'pending'
+               CHECK (status IN ('pending','passed','failed','na','blocked')),
+    target     TEXT NOT NULL DEFAULT '',
+    evidence   TEXT NOT NULL DEFAULT '',
+    notes      TEXT NOT NULL DEFAULT '',
+    finding_id BIGINT REFERENCES findings(id) ON DELETE SET NULL,
+    tested_by  TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (task_id, check_code, target)
+);
+CREATE INDEX IF NOT EXISTS idx_task_checks_task ON task_checks(task_id, id);
+DROP TRIGGER IF EXISTS trg_task_checks_upd ON task_checks;
+CREATE TRIGGER trg_task_checks_upd BEFORE UPDATE ON task_checks
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();

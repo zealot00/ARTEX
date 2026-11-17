@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Autumn-27/artex/intercept"
@@ -39,7 +40,10 @@ type Guard struct {
 	reg         *hook.Registry
 	interceptor *intercept.Interceptor // optional; nil disables user-configured rules
 	targetOnly  bool                   // planner / main agent: built-in deny rules and target gate only, no user rules, no judge, no audit ring
-	gate        targetGate             // the target gate; nil without an interceptor
+	gate            targetGate             // the target gate; nil without an interceptor
+	prodSafe        atomic.Bool            // MLPS production-safe mode: blocks DoS/high-concurrency/destructive commands
+	lateralGate     atomic.Bool            // lateral movement requires explicit approval after foothold discovery
+	lateralApproved atomic.Bool
 }
 
 // New creates a Guard without user-configured intercept rules (used for pentest
@@ -80,6 +84,16 @@ func (g *Guard) setGate(ic *intercept.Interceptor) {
 
 // Hooks returns the hook registry to attach to an agent session.
 func (g *Guard) Hooks() *hook.Registry { return g.reg }
+
+// SetProdSafe enables or disables MLPS production-safe command blocking.
+func (g *Guard) SetProdSafe(on bool) { g.prodSafe.Store(on) }
+
+// SetLateralGate configures whether lateral-movement/tunneling commands require
+// explicit approval and whether approval has been granted.
+func (g *Guard) SetLateralGate(gated, approved bool) {
+	g.lateralGate.Store(gated)
+	g.lateralApproved.Store(approved)
+}
 
 func extractAuditCommand(toolName string, input []byte) string {
 	switch toolName {
@@ -140,6 +154,16 @@ func (g *Guard) gateScope(ctx context.Context) (intercept.TargetScope, bool) {
 // rule or by the judge does not satisfy the gate; an ask and an unpinned target
 // share one approval request.
 func (g *Guard) applyIntercept(ctx context.Context, ev hook.Event, cmd string) hook.Result {
+	if g.prodSafe.Load() && cmd != "" {
+		if reason, blocked := CheckProdSafeCommand(cmd); blocked {
+			return g.block(ev.ToolName, systemBlockMessage(reason), cmd)
+		}
+	}
+	if g.lateralGate.Load() && !g.lateralApproved.Load() && cmd != "" {
+		if reason, blocked := CheckLateralCommand(cmd); blocked {
+			return g.block(ev.ToolName, systemBlockMessage(reason), cmd)
+		}
+	}
 	if g.targetOnly && g.interceptor != nil {
 		// The planner and the main agent run Bash too (#124, F11): the built-in
 		// deny rules apply to them, before the target gate. User rules and the

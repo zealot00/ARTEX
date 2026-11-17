@@ -44,7 +44,14 @@ type Task struct {
 	ParentRef          string     `json:"parent_ref,omitempty"` // parent task id (recorded by orchestration spawn; empty=top level)
 	ExternalRef        string     `json:"external_ref,omitempty"`
 	IdempotencyKey     string     `json:"idempotency_key,omitempty"`
-	CreatedAt          time.Time  `json:"created_at"`
+	ComplianceProfile      string     `json:"compliance_profile,omitempty"`
+	ProdSafeMode           bool       `json:"prod_safe_mode"`
+	LateralGate            bool       `json:"lateral_gate"`
+	LateralApproved        bool       `json:"lateral_approved"`
+	AwaitingFootholdTaskID *int64     `json:"awaiting_foothold_task_id,omitempty"`
+	FootholdVulnClasses    []string   `json:"foothold_vuln_classes,omitempty"`
+	ParkedReason           string     `json:"parked_reason,omitempty"`
+	CreatedAt              time.Time  `json:"created_at"`
 	CompletedAt        *time.Time `json:"completed_at,omitempty"` // when it entered a terminal state (done/failed/timeout); nil for non-terminal
 	// Task-level timeout (see the task-level timeout and wrap-up design doc).
 	TimeoutSeconds int        `json:"timeout_seconds"`        // 0=no time limit
@@ -187,6 +194,16 @@ type TaskCreateOptions struct {
 	ExternalRef string
 	// IdempotencyKey prevents duplicate task creation when external callers retry.
 	IdempotencyKey string
+	// ComplianceProfile selects a compliance checklist template (e.g. "mlps").
+	ComplianceProfile string
+	// ProdSafeMode enables production-safe constraints/intercept rules (defaults true when ComplianceProfile == "mlps").
+	ProdSafeMode *bool
+	// LateralGate gates lateral-movement/tunneling until foothold confirmation & approval.
+	LateralGate *bool
+	// AwaitingFootholdTaskID parks this task at creation until the upstream task confirms a qualifying foothold finding.
+	AwaitingFootholdTaskID *int64
+	// FootholdVulnClasses restricts which finding vuln classes unpark/trigger lateral movement (empty = default critical/high foothold classes).
+	FootholdVulnClasses []string
 }
 
 // CreateTaskWithOptions creates an exploration, task, direct source relations,
@@ -252,16 +269,47 @@ VALUES ($1, 'fact', $2, 0, 'origin', 'system')`, expID, string(originPayload)); 
 	}
 	opts.ExternalRef = strings.TrimSpace(opts.ExternalRef)
 	opts.IdempotencyKey = strings.TrimSpace(opts.IdempotencyKey)
+	opts.ComplianceProfile = strings.ToLower(strings.TrimSpace(opts.ComplianceProfile))
+	prodSafe := opts.ComplianceProfile == ComplianceProfileMLPS
+	if opts.ProdSafeMode != nil {
+		prodSafe = *opts.ProdSafeMode
+	}
+	lateralGate := opts.LateralGate != nil && *opts.LateralGate
+	parked := opts.AwaitingFootholdTaskID != nil && *opts.AwaitingFootholdTaskID > 0
+	parkedReason := ""
+	if parked {
+		parkedReason = fmt.Sprintf("awaiting foothold finding from task #%d", *opts.AwaitingFootholdTaskID)
+	}
+	var normClasses []string
+	seenClass := map[string]bool{}
+	for _, raw := range opts.FootholdVulnClasses {
+		c := strings.ToLower(strings.TrimSpace(raw))
+		if c != "" && !seenClass[c] {
+			seenClass[c] = true
+			normClasses = append(normClasses, c)
+		}
+	}
+	if normClasses == nil {
+		normClasses = []string{}
+	}
+	classesJSON, _ := json.Marshal(normClasses)
 	t := &Task{
 		Name: opts.Name, CategoryID: opts.CategoryID, CategoryName: categoryName,
 		Description: description, Goal: goal, ExplorationID: expID,
 		LLMProfileID: active, ActiveLLMProfileID: active,
-		LLMProfileIDs:  append([]int64(nil), opts.LLMProfileIDs...),
-		SourceTaskIDs:  append([]int64(nil), opts.SourceTaskIDs...),
-		CompanyIDs:     append([]int64(nil), opts.CompanyIDs...),
-		ExternalRef:    opts.ExternalRef,
-		IdempotencyKey: opts.IdempotencyKey,
-		TimeoutSeconds: opts.TimeoutSeconds, PlanHeartbeatSeconds: opts.PlanHeartbeatSeconds,
+		LLMProfileIDs:          append([]int64(nil), opts.LLMProfileIDs...),
+		SourceTaskIDs:          append([]int64(nil), opts.SourceTaskIDs...),
+		CompanyIDs:             append([]int64(nil), opts.CompanyIDs...),
+		ExternalRef:            opts.ExternalRef,
+		IdempotencyKey:         opts.IdempotencyKey,
+		ComplianceProfile:      opts.ComplianceProfile,
+		ProdSafeMode:           prodSafe,
+		LateralGate:            lateralGate,
+		LateralApproved:        false,
+		AwaitingFootholdTaskID: opts.AwaitingFootholdTaskID,
+		FootholdVulnClasses:    normClasses,
+		ParkedReason:           parkedReason,
+		TimeoutSeconds:         opts.TimeoutSeconds, PlanHeartbeatSeconds: opts.PlanHeartbeatSeconds,
 		PlanQuietMode:   quietMode,
 		CoverageEnabled: coverageEnabled,
 	}
@@ -271,9 +319,12 @@ VALUES ($1, 'fact', $2, 0, 'origin', 'system')`, expID, string(originPayload)); 
 	}
 	t.TargetGate = opts.TargetGate != nil && *opts.TargetGate
 	if err := tx.QueryRow(`
-INSERT INTO tasks(name, category_id, description, goal, exploration_id, llm_profile_id, active_llm_profile_id, timeout_seconds, plan_heartbeat_seconds, plan_quiet_mode, coverage_enabled, llm_rotate, target_gate, external_ref, idempotency_key)
-VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-RETURNING id, status, paused, created_at`, opts.Name, opts.CategoryID, description, goal, expID, active, opts.TimeoutSeconds, opts.PlanHeartbeatSeconds, quietMode, coverageEnabled, rotate, t.TargetGate, opts.ExternalRef, opts.IdempotencyKey).Scan(&t.ID, &t.Status, &t.Paused, &t.CreatedAt); err != nil {
+INSERT INTO tasks(name, category_id, description, goal, exploration_id, llm_profile_id, active_llm_profile_id, timeout_seconds, plan_heartbeat_seconds, plan_quiet_mode, coverage_enabled, llm_rotate, target_gate, external_ref, idempotency_key, compliance_profile, prod_safe_mode, paused, lateral_gate, lateral_approved, awaiting_foothold_task_id, foothold_vuln_classes, parked_reason)
+VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,false,$19,$20::jsonb,$21)
+RETURNING id, status, paused, created_at`, opts.Name, opts.CategoryID, description, goal, expID, active, opts.TimeoutSeconds, opts.PlanHeartbeatSeconds, quietMode, coverageEnabled, rotate, t.TargetGate, opts.ExternalRef, opts.IdempotencyKey, opts.ComplianceProfile, prodSafe, parked, lateralGate, opts.AwaitingFootholdTaskID, string(classesJSON), parkedReason).Scan(&t.ID, &t.Status, &t.Paused, &t.CreatedAt); err != nil {
+		return nil, err
+	}
+	if err := seedTaskChecksTx(tx, t.ID, opts.ComplianceProfile); err != nil {
 		return nil, err
 	}
 	if err := insertTaskRelations(tx, t.ID, opts.SourceTaskIDs); err != nil {
@@ -389,15 +440,31 @@ func insertTaskLLMProfiles(tx *sql.Tx, taskID int64, profileIDs []int64) error {
 
 const taskCols = `id, COALESCE(name,''), category_id,
 COALESCE((SELECT category.name FROM task_categories category WHERE category.id=tasks.category_id),''),
-description, goal, exploration_id, status, paused, queued, queued_at, COALESCE(queue_mode,''), llm_profile_id, active_llm_profile_id, COALESCE(parent_ref,''), COALESCE(external_ref,''), COALESCE(idempotency_key,''), pinned_at, created_at, completed_at, COALESCE(timeout_seconds,0), COALESCE(plan_heartbeat_seconds,300), COALESCE(plan_quiet_mode,true), COALESCE(coverage_enabled,true), COALESCE(llm_rotate,false), first_run_at, deadline_at, target_gate`
+description, goal, exploration_id, status, paused, queued, queued_at, COALESCE(queue_mode,''), llm_profile_id, active_llm_profile_id, COALESCE(parent_ref,''), COALESCE(external_ref,''), COALESCE(idempotency_key,''), COALESCE(compliance_profile,''), COALESCE(prod_safe_mode,false), COALESCE(lateral_gate,false), COALESCE(lateral_approved,false), awaiting_foothold_task_id, COALESCE(foothold_vuln_classes,'[]'::jsonb), COALESCE(parked_reason,''), pinned_at, created_at, completed_at, COALESCE(timeout_seconds,0), COALESCE(plan_heartbeat_seconds,300), COALESCE(plan_quiet_mode,true), COALESCE(coverage_enabled,true), COALESCE(llm_rotate,false), first_run_at, deadline_at, target_gate`
 
 func scanTask(sc interface{ Scan(...any) error }) (*Task, error) {
 	var t Task
-	if err := sc.Scan(&t.ID, &t.Name, &t.CategoryID, &t.CategoryName, &t.Description, &t.Goal, &t.ExplorationID, &t.Status, &t.Paused, &t.Queued, &t.QueuedAt, &t.QueueMode, &t.LLMProfileID, &t.ActiveLLMProfileID, &t.ParentRef, &t.ExternalRef, &t.IdempotencyKey, &t.PinnedAt, &t.CreatedAt, &t.CompletedAt, &t.TimeoutSeconds, &t.PlanHeartbeatSeconds, &t.PlanQuietMode, &t.CoverageEnabled, &t.LLMRotate, &t.FirstRunAt, &t.DeadlineAt, &t.TargetGate); err != nil {
+	var rawClasses []byte
+	if err := sc.Scan(&t.ID, &t.Name, &t.CategoryID, &t.CategoryName, &t.Description, &t.Goal, &t.ExplorationID, &t.Status, &t.Paused, &t.Queued, &t.QueuedAt, &t.QueueMode, &t.LLMProfileID, &t.ActiveLLMProfileID, &t.ParentRef, &t.ExternalRef, &t.IdempotencyKey, &t.ComplianceProfile, &t.ProdSafeMode, &t.LateralGate, &t.LateralApproved, &t.AwaitingFootholdTaskID, &rawClasses, &t.ParkedReason, &t.PinnedAt, &t.CreatedAt, &t.CompletedAt, &t.TimeoutSeconds, &t.PlanHeartbeatSeconds, &t.PlanQuietMode, &t.CoverageEnabled, &t.LLMRotate, &t.FirstRunAt, &t.DeadlineAt, &t.TargetGate); err != nil {
 		return nil, err
+	}
+	if len(rawClasses) > 0 {
+		_ = json.Unmarshal(rawClasses, &t.FootholdVulnClasses)
 	}
 	t.Pinned = t.PinnedAt != nil
 	return &t, nil
+}
+
+// SetTaskLateralState persists lateral approval and parked_reason updates.
+func (d *DB) SetTaskLateralState(id int64, approved bool, parkedReason string) error {
+	_, err := d.Exec(`UPDATE tasks SET lateral_approved=$2, parked_reason=$3 WHERE id=$1`, id, approved, strings.TrimSpace(parkedReason))
+	return err
+}
+
+// SetTaskParkedReason updates only parked_reason without altering lateral_approved.
+func (d *DB) SetTaskParkedReason(id int64, parkedReason string) error {
+	_, err := d.Exec(`UPDATE tasks SET parked_reason=$2 WHERE id=$1`, id, strings.TrimSpace(parkedReason))
+	return err
 }
 
 // GetTaskByIdempotencyKey looks up an alive task created with key.
