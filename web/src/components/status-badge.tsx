@@ -1,3 +1,7 @@
+"use client";
+
+import type { TranslationKey } from "@/lib/i18n/messages";
+import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import {
   statusMeta,
@@ -18,7 +22,11 @@ export function StatusBadge({
   dot?: boolean;
   className?: string;
 }) {
+  const { t } = useI18n();
   const meta = statusMeta(domain, value);
+  const key = `status.${domain}.${value}` as TranslationKey;
+  const translated = t(key);
+  const label = translated === key ? meta.label : translated;
   return (
     <span
       className={cn(
@@ -30,7 +38,7 @@ export function StatusBadge({
       {dot && (
         <span className={cn("size-1.5 rounded-full", toneDot[meta.tone])} />
       )}
-      {meta.label}
+      {label}
     </span>
   );
 }

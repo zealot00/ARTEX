@@ -13,9 +13,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n/provider";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { locale, setLocale, t } = useI18n();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -100,25 +102,34 @@ export default function LoginPage() {
       </div>
 
       {/* Right panel */}
-      <div className="flex w-full items-center justify-center bg-background p-8 lg:w-2/3">
+      <div className="relative flex w-full items-center justify-center bg-background p-8 lg:w-2/3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="absolute top-4 right-4 text-xs text-muted-foreground"
+          onClick={() => setLocale(locale === "zh-CN" ? "en" : "zh-CN")}
+        >
+          {locale === "zh-CN" ? "English" : "简体中文"}
+        </Button>
         <div className="w-full max-w-md space-y-10 py-24 lg:py-32">
           <div className="space-y-4 text-center">
-            <h2 className="text-2xl font-medium tracking-tight">Sign in</h2>
-            <p className="mx-auto max-w-xl text-muted-foreground">Welcome back — enter your password to continue using ARTEX</p>
+            <h2 className="text-2xl font-medium tracking-tight">{t("auth.signInTitle")}</h2>
+            <p className="mx-auto max-w-xl text-muted-foreground">{t("auth.signInSubtitle")}</p>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username">{t("auth.usernameLabel")}</Label>
               <Input id="username" value="ARTEX" readOnly className="bg-muted text-muted-foreground" />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("auth.passwordLabel")}</Label>
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
+                placeholder={t("auth.passwordPlaceholder")}
                 autoFocus
                 autoComplete="current-password"
               />
@@ -131,19 +142,19 @@ export default function LoginPage() {
                 className="mt-0.5"
               />
               <Label htmlFor="agree-terms" className="text-sm font-normal leading-relaxed text-muted-foreground">
-                I have read and agree to
+                {t("auth.agreePrefix")}
                 <button
                   type="button"
                   onClick={() => setTermsOpen(true)}
                   className="mx-0.5 font-medium text-primary underline-offset-4 hover:underline"
                 >
-                  Terms of Use
+                  {t("auth.termsOfUse")}
                 </button>
               </Label>
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading || !password || !agreed}>
-              {loading ? "Signing in..." : "Sign in"}
+              {loading ? t("auth.signingIn") : t("auth.signInButton")}
             </Button>
           </form>
         </div>

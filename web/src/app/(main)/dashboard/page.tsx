@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type {
   Activity,
   Agent,
@@ -130,6 +131,7 @@ function SectionTitle({
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const { t } = useI18n();
   // data state
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const [findings, setFindings] = React.useState<Finding[]>([]);
@@ -496,7 +498,7 @@ export default function DashboardPage() {
       {/* ── Header ── */}
       <div>
         <div>
-          <h1 className="text-lg font-semibold tracking-tight">Overview</h1>
+          <h1 className="text-lg font-semibold tracking-tight">{t("dashboard.title")}</h1>
           <p className="text-xs text-muted-foreground">System-wide status · live refresh</p>
         </div>
       </div>

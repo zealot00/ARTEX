@@ -9,9 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n/provider";
 
 export default function SetupPage() {
   const router = useRouter();
+  const { locale, setLocale, t } = useI18n();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [setupToken, setSetupToken] = useState("");
@@ -74,55 +76,64 @@ export default function SetupPage() {
       </div>
 
       {/* Right panel */}
-      <div className="flex w-full items-center justify-center bg-background p-8 lg:w-2/3">
+      <div className="relative flex w-full items-center justify-center bg-background p-8 lg:w-2/3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="absolute top-4 right-4 text-xs text-muted-foreground"
+          onClick={() => setLocale(locale === "zh-CN" ? "en" : "zh-CN")}
+        >
+          {locale === "zh-CN" ? "English" : "简体中文"}
+        </Button>
         <div className="w-full max-w-md space-y-10 py-24 lg:py-32">
           <div className="space-y-4 text-center">
-            <h2 className="text-2xl font-medium tracking-tight">{unavailable ? "Cannot confirm initialization state" : "Set initial password"}</h2>
+            <h2 className="text-2xl font-medium tracking-tight">
+              {unavailable ? t("auth.setupUnavailableTitle") : t("auth.setupTitle")}
+            </h2>
             <p className="mx-auto max-w-xl text-muted-foreground">
-              {unavailable
-                ? "The backend or database is temporarily unavailable. To avoid overwriting a password already set on this instance, setup is temporarily closed — restore the service and try again."
-                : "First time using ARTEX? Enter the setup token from the server log, then set a login password for the account (at least 12 characters)"}
+              {unavailable ? t("auth.setupUnavailableDesc") : t("auth.setupSubtitle")}
             </p>
           </div>
           {unavailable ? (
             <div className="flex flex-col gap-4">
               {error && <p className="text-center text-sm text-destructive">{error}</p>}
               <Button type="button" className="w-full" onClick={() => window.location.reload()}>
-                Retry
+                {t("auth.retryBtn")}
               </Button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="setup-token">Setup token</Label>
+                <Label htmlFor="setup-token">{t("auth.setupTokenLabel")}</Label>
                 <Input
                   id="setup-token"
                   value={setupToken}
                   onChange={(e) => setSetupToken(e.target.value)}
-                  placeholder="Printed in the server log at startup"
+                  placeholder={t("auth.setupTokenPlaceholder")}
                   autoFocus
                   autoComplete="off"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="password">New password</Label>
+                <Label htmlFor="password">{t("auth.newPasswordLabel")}</Label>
                 <Input
                   id="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 12 characters"
+                  placeholder={t("auth.newPasswordPlaceholder")}
                   autoComplete="new-password"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="confirm">Confirm password</Label>
+                <Label htmlFor="confirm">{t("auth.confirmPasswordLabel")}</Label>
                 <Input
                   id="confirm"
                   type="password"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
-                  placeholder="Enter the password again"
+                  placeholder={t("auth.confirmPasswordPlaceholder")}
                   autoComplete="new-password"
                 />
               </div>
@@ -132,7 +143,7 @@ export default function SetupPage() {
                 className="w-full"
                 disabled={loading || !setupToken.trim() || !password || !confirm}
               >
-                {loading ? "Saving..." : "Set password and sign in"}
+                {loading ? t("common.saving") : t("auth.setupSubmitBtn")}
               </Button>
             </form>
           )}

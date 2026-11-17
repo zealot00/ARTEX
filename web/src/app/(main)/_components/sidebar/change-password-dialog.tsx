@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 
 export function ChangePasswordDialog({
   open,
@@ -24,6 +25,7 @@ export function ChangePasswordDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useI18n();
   const [oldPassword, setOldPassword] = React.useState("");
   const [newPassword, setNewPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
@@ -41,18 +43,18 @@ export function ChangePasswordDialog({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!oldPassword || !newPassword) {
-      toast.error("Fill in the current password and the new password");
+      toast.error(t("sidebar.pwRequiredToast"));
       return;
     }
     if (newPassword !== confirmPassword) {
-      toast.error("The two new passwords do not match");
+      toast.error(t("sidebar.pwMismatchToast"));
       return;
     }
     setSaving(true);
     api
       .changePassword(oldPassword, newPassword)
       .then(() => {
-        toast.success("Password changed");
+        toast.success(t("sidebar.pwChangedToast"));
         onOpenChange(false);
       })
       .catch((err) => toast.error(`Change failed: ${(err as Error).message}`))
@@ -64,14 +66,12 @@ export function ChangePasswordDialog({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle>Change password</DialogTitle>
-            <DialogDescription>
-              The username is fixed as <b>ARTEX</b>. Enter the current password to verify; login tokens issued before the change stay valid until they expire.
-            </DialogDescription>
+            <DialogTitle>{t("sidebar.changePwTitle")}</DialogTitle>
+            <DialogDescription>{t("sidebar.changePwDesc")}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cp-old">Current password</Label>
+              <Label htmlFor="cp-old">{t("sidebar.currentPwLabel")}</Label>
               <Input
                 id="cp-old"
                 type="password"
@@ -82,7 +82,7 @@ export function ChangePasswordDialog({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cp-new">New password</Label>
+              <Label htmlFor="cp-new">{t("sidebar.newPwLabel")}</Label>
               <Input
                 id="cp-new"
                 type="password"
@@ -93,7 +93,7 @@ export function ChangePasswordDialog({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cp-confirm">Confirm new password</Label>
+              <Label htmlFor="cp-confirm">{t("sidebar.confirmNewPwLabel")}</Label>
               <Input
                 id="cp-confirm"
                 type="password"
@@ -106,10 +106,10 @@ export function ChangePasswordDialog({
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Changing…" : "Confirm change"}
+              {saving ? t("sidebar.changingBtn") : t("sidebar.confirmChangeBtn")}
             </Button>
           </DialogFooter>
         </form>
