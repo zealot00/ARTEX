@@ -28,6 +28,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type {
   AssetInterceptKind,
   AssetInterceptRule,
@@ -104,6 +105,7 @@ function StatCard({
 }
 
 export function OverviewTab({ taskId }: { taskId: string }) {
+  const { t } = useI18n();
   const [task, setTask] = React.useState<Task | null>(null);
   const [stats, setStats] = React.useState<Stats | null>(null);
   const [intents, setIntents] = React.useState<TaskNode[]>([]);
@@ -436,16 +438,16 @@ export function OverviewTab({ taskId }: { taskId: string }) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <TargetIcon className="size-4 text-primary" /> Task description & goal
+            <TargetIcon className="size-4 text-primary" /> {t("tab.overview.descAndGoal")}
           </CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
-            <div className="text-xs font-medium text-muted-foreground">Description</div>
+            <div className="text-xs font-medium text-muted-foreground">{t("tab.overview.description")}</div>
             <p className="text-sm whitespace-pre-wrap break-words">{task?.description?.trim() || "—"}</p>
           </div>
           <div className="flex flex-col gap-1.5">
-            <div className="text-xs font-medium text-muted-foreground">Goal</div>
+            <div className="text-xs font-medium text-muted-foreground">{t("tab.overview.goal")}</div>
             <p className="text-sm whitespace-pre-wrap break-words">{task?.goal?.trim() || "—"}</p>
           </div>
         </CardContent>
@@ -455,7 +457,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <ListChecksIcon className="size-4 text-primary" /> Goal management
+            <ListChecksIcon className="size-4 text-primary" /> {t("tab.overview.goalMgmt")}
             <span className="text-muted-foreground text-xs font-normal">
               (final verifiable goals, {goals.length} in total; adds/edits notify the planner and revive the task)
             </span>
@@ -568,7 +570,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
               )}
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm">No goals yet. Once added, the planner dispatches exploration intents from them and judges completion.</p>
+            <p className="text-muted-foreground text-sm">{t("tab.overview.noGoals")}</p>
           )}
         </CardContent>
       </Card>
@@ -578,7 +580,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <ShieldAlertIcon className="size-4 text-amber-500" /> Operation constraints
+            <ShieldAlertIcon className="size-4 text-amber-500" /> {t("tab.overview.constraints")}
             <span className="text-muted-foreground text-xs font-normal">
               (bounds planner/worker exploration, {constraints.length} in total; changes take effect at the next planning round)
             </span>
@@ -995,7 +997,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                 <span className="min-w-0 flex-1 truncate">{f.summary}</span>
               </div>
             ))}
-            {taskFindings.length === 0 && <p className="text-sm text-muted-foreground">No findings yet</p>}
+            {taskFindings.length === 0 && <p className="text-sm text-muted-foreground">{t("tab.overview.noFindings")}</p>}
           </CardContent>
         </Card>
       </div>

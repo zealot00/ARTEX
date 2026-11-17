@@ -25,6 +25,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { CoverageAssetRef, CoverageAssetRefs, CoverageGraphEdge, CoverageGraphNode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -457,6 +458,7 @@ function FoldSheet({
 
 // ---------------------------------------------------------------------------
 function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; coverageEnabled?: boolean }) {
+  const { t } = useI18n();
   const [data, setData] = React.useState<{
     nodes: CoverageGraphNode[];
     edges: CoverageGraphEdge[];
@@ -654,7 +656,7 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
               )}
             </span>
           ) : (
-            <span className="text-muted-foreground">{loading ? "Loading…" : "No in-scope assets yet (anchor the task scope first)"}</span>
+            <span className="text-muted-foreground">{loading ? t("common.loading") : t("tab.coverage.empty")}</span>
           )}
           <Button variant="ghost" size="icon" className="size-6" onClick={fetchGraph} title="Refresh">
             <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />

@@ -39,6 +39,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import { parseCompanyScopeText } from "@/lib/company-scope";
 import { taskAssetSourceLabel } from "@/lib/task-assets";
 import type { Asset, NewAssetType } from "@/lib/types";
@@ -173,6 +174,7 @@ function AssetCard({
   size: number;
   total: number;
 }) {
+  const { t } = useI18n();
   const rows = React.Children.toArray(children);
   const pageCount = Math.max(1, Math.ceil(total / size));
   const start = total === 0 ? 0 : page * size + 1;
@@ -192,7 +194,7 @@ function AssetCard({
     tableRows = (
       <TableRow>
         <TableCell colSpan={cols.length} className="py-10 text-center text-muted-foreground text-sm">
-          No test assets in this category yet
+          {t("tab.assets.empty")}
         </TableCell>
       </TableRow>
     );

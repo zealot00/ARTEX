@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import { type Tone, toneClasses, toneDot } from "@/lib/status";
 import { taskAssetTypeLabel } from "@/lib/task-assets";
 import type { Edge, ExploreKind, FindingAsset, NewAssetType, TaskNode } from "@/lib/types";
@@ -432,6 +433,7 @@ function BroadcastRow({
 }
 
 export function BroadcastTab({ taskId }: { taskId: string }) {
+  const { t } = useI18n();
   const [kinds, setKinds] = React.useState<ExploreKind[]>([]);
   const [queryInput, setQueryInput] = React.useState("");
   const [query, setQuery] = React.useState("");
@@ -659,7 +661,7 @@ export function BroadcastTab({ taskId }: { taskId: string }) {
           </div>
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
-            {query || kinds.length > 0 ? "No broadcasts match the filters." : "This task has not produced any exploration nodes yet."}
+            {query || kinds.length > 0 ? t("tab.broadcast.emptyFiltered") : t("tab.broadcast.emptyAll")}
           </p>
         ) : (
           groups.map((group) => (

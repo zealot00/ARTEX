@@ -11,12 +11,14 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { TaskCredential } from "@/lib/types";
 
 // Credentials tab (#3): the task's test accounts — user-declared (program alias
 // accounts) and agent-recorded (accounts the workers registered themselves).
 // Passwords render masked; reveal and copy are explicit.
 export function CredentialsTab({ taskId }: { taskId: string }) {
+  const { t } = useI18n();
   const [items, setItems] = React.useState<TaskCredential[] | null>(null);
   const [error, setError] = React.useState("");
   const [revealed, setRevealed] = React.useState<Set<number>>(new Set());
@@ -86,7 +88,7 @@ export function CredentialsTab({ taskId }: { taskId: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Test accounts</CardTitle>
+        <CardTitle>{t("tab.credentials.title")}</CardTitle>
         <CardDescription>
           Test accounts for this task. Entries with an empty password mean the agent registers that account and records it. Agent-recorded accounts appear here automatically.
         </CardDescription>
@@ -98,7 +100,7 @@ export function CredentialsTab({ taskId }: { taskId: string }) {
         ) : items.length === 0 ? (
           <Empty>
             <EmptyHeader>
-              <EmptyTitle>No test accounts</EmptyTitle>
+              <EmptyTitle>{t("tab.credentials.emptyTitle")}</EmptyTitle>
               <EmptyDescription>
                 Add one below, or declare them when creating the task — the agent reuses them for authenticated testing.
               </EmptyDescription>

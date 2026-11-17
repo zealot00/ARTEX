@@ -15,6 +15,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { Finding, FindingsPage } from "@/lib/types";
 
 const PAGE_SIZE = 20;
@@ -24,6 +25,7 @@ function findingLabel(finding: Finding) {
 }
 
 export function RetestsTab({ taskId }: { taskId: string }) {
+  const { t } = useI18n();
   const [page, setPage] = React.useState(1);
   const [data, setData] = React.useState<FindingsPage | null>(null);
   const [selectedId, setSelectedId] = React.useState("");
@@ -83,8 +85,8 @@ export function RetestsTab({ taskId }: { taskId: string }) {
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)]">
         <Card className="min-w-0">
           <CardHeader>
-            <CardTitle>Select a vulnerability{data ? ` · ${data.total}` : ""}</CardTitle>
-            <CardDescription>View retest history for this task's vulnerabilities, or start a new retest.</CardDescription>
+            <CardTitle>{t("tab.retests.selectTitle")}{data ? ` · ${data.total}` : ""}</CardTitle>
+            <CardDescription>{t("tab.retests.selectDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="flex max-h-[32rem] flex-col overflow-y-auto">
             {!loaded && !error ? <Skeleton className="h-24 w-full" /> : null}

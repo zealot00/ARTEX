@@ -51,6 +51,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSideQuestions } from "@/hooks/use-side-questions";
 import { api, sseUrl } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import { shouldSubmitOnKey, useChatSendMode } from "@/lib/chat-send-mode";
 import { MOCK } from "@/lib/mock/enabled";
 import { isBtwCommand } from "@/lib/side-questions";
@@ -479,6 +480,7 @@ function WorkerAssetBadge({ assets }: { assets: IntentAsset[] }) {
 }
 
 export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; taskPaused?: boolean }) {
+  const { t } = useI18n();
   const approvalFocus = useApprovalFocus({ taskId });
   const [selectedSessionId, setActiveId] = React.useState(MAIN_ID);
   const focusSession = React.useMemo<Session | undefined>(() => {
@@ -1875,13 +1877,13 @@ export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; ta
                 {activeState?.loadingMore && (
                   <div className="flex items-center justify-center gap-2 pb-2 text-xs text-muted-foreground">
                     <Loader2Icon className="size-3.5 animate-spin" />
-                    Loading earlier history…
+                    {t("tab.sessions.loadingHistory")}
                   </div>
                 )}
                 {showLoader ? (
                   <div className="flex items-center gap-2 pl-9 text-xs text-muted-foreground">
                     <Loader2Icon className="size-3.5 animate-spin" />
-                    Loading activity stream…
+                    {t("tab.sessions.loadingStream")}
                   </div>
                 ) : activeState?.error ? (
                   <div className="flex items-center gap-2 pl-9 text-xs text-red-500">
@@ -1893,7 +1895,7 @@ export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; ta
                       className="h-6 px-2 text-xs"
                       onClick={() => loadSession(activeKey)}
                     >
-                      Retry
+                      {t("auth.retryBtn")}
                     </Button>
                   </div>
                 ) : activity.length ? (
@@ -1906,7 +1908,7 @@ export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; ta
                   />
                 ) : (
                   <div className="pl-9 text-xs text-muted-foreground">
-                    {isMain ? "No conversation yet. Message the main agent below to steer exploration or step into the flow." : "No activity records."}
+                    {isMain ? t("tab.sessions.emptyMain") : t("tab.sessions.emptyWorker")}
                   </div>
                 )}
               </div>
