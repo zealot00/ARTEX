@@ -22,6 +22,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { formatRulesText, formatSessionEndpoint, parseLineEntries, summarizeChecksProgress } from "@/lib/depth-ops";
+import { useI18n } from "@/lib/i18n/provider";
 import type { DepthSessionInfo, Task, TaskCheckRow } from "@/lib/types";
 
 export function DepthOpsTab({
@@ -33,6 +34,7 @@ export function DepthOpsTab({
   task: Task;
   onTaskUpdated: () => void;
 }) {
+  const { t } = useI18n();
   const [fenceEnabled, setFenceEnabled] = React.useState(!!task.fence_enabled);
   const [fenceRulesText, setFenceRulesText] = React.useState(formatRulesText(task.fence_rules));
   const [savingFence, setSavingFence] = React.useState(false);
@@ -78,7 +80,7 @@ export function DepthOpsTab({
       const updated = await api.updateTaskFence(taskId, fenceEnabled, rules);
       setFenceEnabled(updated.fence_enabled);
       setFenceRulesText(formatRulesText(updated.fence_rules));
-      toast.success("Electronic fence updated");
+      toast.success(t("depth.fence.savedToast"));
       onTaskUpdated();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to update electronic fence");
@@ -91,7 +93,7 @@ export function DepthOpsTab({
     setApprovingLateral(true);
     try {
       await api.approveTaskLateral(taskId, lateralNote.trim());
-      toast.success("Lateral movement approved and task resumed");
+      toast.success(t("depth.lateral.approvedToast"));
       setLateralNote("");
       onTaskUpdated();
     } catch (e) {
@@ -104,7 +106,7 @@ export function DepthOpsTab({
   const handleCloseSession = async (sid: string) => {
     try {
       await api.closeTaskDepthSession(taskId, sid);
-      toast.success(`Closed session ${sid}`);
+      toast.success(t("depth.sessions.closedToast", { id: sid }));
       await loadAll();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to close session");
@@ -122,18 +124,16 @@ export function DepthOpsTab({
             <CardTitle className="flex items-center justify-between text-base">
               <span className="flex items-center gap-2">
                 <ShieldCheckIcon className="size-4" />
-                Electronic Fence (Scope Geofence)
+                {t("depth.fence.title")}
               </span>
               <Switch checked={fenceEnabled} onCheckedChange={setFenceEnabled} />
             </CardTitle>
-            <CardDescription>
-              Fail-closed boundary enforced across Planner, Workers, MainAgent, credential audits, and HTTP 30x redirects.
-            </CardDescription>
+            <CardDescription>{t("depth.fence.desc")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1">
               <Label htmlFor="fence-rules" className="text-xs">
-                Authorized Rules (CIDR, IP, domain, *.domain, or URL prefix — one per line)
+                {t("depth.fence.rulesLabel")}
               </Label>
               <Textarea
                 id="fence-rules"
@@ -145,7 +145,7 @@ export function DepthOpsTab({
               />
             </div>
             <Button size="sm" onClick={handleSaveFence} disabled={savingFence}>
-              {savingFence ? "Saving..." : "Save Electronic Fence"}
+              {savingFence ? t("common.saving") : t("depth.fence.saveBtn")}
             </Button>
           </CardContent>
         </Card>
@@ -155,12 +155,9 @@ export function DepthOpsTab({
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <ShieldAlertIcon className="size-4" />
-              Lateral Gate & Safety Controls
+              {t("depth.lateral.title")}
             </CardTitle>
-            <CardDescription>
-              Controls foothold-gated pivoting (<code>proxychains4</code>, <code>chisel</code>, <code>impacket</code>,{" "}
-              <code>nxc</code>, <code>depth_session_open</code>).
-            </CardDescription>
+            <CardDescription>{t("depth.lateral.desc")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="flex flex-wrap gap-2">
@@ -176,19 +173,19 @@ export function DepthOpsTab({
             </div>
             {task.parked_reason && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
-                Parked reason: <span className="font-mono">{task.parked_reason}</span>
+                {t("depth.lateral.parkedReason", { reason: task.parked_reason })}
               </div>
             )}
             {task.lateral_gate && !task.lateral_approved && (
               <div className="space-y-2 border-t pt-3">
                 <Input
-                  placeholder="Approval note (optional)"
+                  placeholder={t("depth.lateral.notePlaceholder")}
                   value={lateralNote}
                   onChange={(e) => setLateralNote(e.target.value)}
                 />
                 <Button size="sm" onClick={handleApproveLateral} disabled={approvingLateral}>
                   <CheckCircle2Icon className="mr-1.5 size-3.5" />
-                  {approvingLateral ? "Approving..." : "Approve Lateral Movement & Resume"}
+                  {approvingLateral ? t("depth.lateral.approvingBtn") : t("depth.lateral.approveBtn")}
                 </Button>
               </div>
             )}
@@ -202,22 +199,20 @@ export function DepthOpsTab({
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
               <TerminalIcon className="size-4" />
-              Persistent Depth Sessions & Pivot Tunnels
+              {t("depth.sessions.title")}
             </CardTitle>
-            <CardDescription>
-              Task-scoped interactive PTYs, multi-hop SSH jumps, SOCKS5 proxies, and tunnels (auto-cleaned on task completion).
-            </CardDescription>
+            <CardDescription>{t("depth.sessions.desc")}</CardDescription>
           </div>
           <Button size="sm" variant="outline" onClick={() => void loadAll()}>
             <RefreshCwIcon className="mr-1.5 size-3.5" />
-            Refresh
+            {t("common.refresh")}
           </Button>
         </CardHeader>
         <CardContent>
           {loadingSessions ? (
-            <p className="text-xs text-muted-foreground">Loading sessions...</p>
+            <p className="text-xs text-muted-foreground">{t("common.loading")}</p>
           ) : sessions.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No persistent depth sessions recorded for this task.</p>
+            <p className="text-xs text-muted-foreground">{t("depth.sessions.empty")}</p>
           ) : (
             <div className="space-y-2">
               {sessions.map((s) => (
@@ -239,7 +234,7 @@ export function DepthOpsTab({
                   {s.status === "open" && (
                     <Button size="sm" variant="destructive" onClick={() => void handleCloseSession(s.id)}>
                       <XCircleIcon className="mr-1 size-3.5" />
-                      Close
+                      {t("common.close")}
                     </Button>
                   )}
                 </div>
@@ -254,26 +249,26 @@ export function DepthOpsTab({
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <div>
             <CardTitle className="text-base">
-              Compliance Checklist ({progress.completed}/{progress.total} • {progress.percent}%)
+              {t("depth.checks.title", {
+                completed: progress.completed,
+                total: progress.total,
+                percent: progress.percent,
+              })}
             </CardTitle>
-            <CardDescription>
-              Positive findings and negative-evidence verification across MLPS 2.0 / AD / Windows / Network domains.
-            </CardDescription>
+            <CardDescription>{t("depth.checks.desc")}</CardDescription>
           </div>
           <Button size="sm" variant="outline" asChild>
             <a href={`/api/tasks/${encodeURIComponent(taskId)}/report/mlps`} target="_blank" rel="noreferrer">
               <DownloadIcon className="mr-1.5 size-3.5" />
-              Export MLPS Report
+              {t("depth.checks.exportBtn")}
             </a>
           </Button>
         </CardHeader>
         <CardContent>
           {loadingChecks ? (
-            <p className="text-xs text-muted-foreground">Loading checks...</p>
+            <p className="text-xs text-muted-foreground">{t("common.loading")}</p>
           ) : checks.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              No compliance checklist seeded for this task (set <code>compliance_profile: &quot;mlps&quot;</code> at creation).
-            </p>
+            <p className="text-xs text-muted-foreground">{t("depth.checks.empty")}</p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {checks.map((c) => (

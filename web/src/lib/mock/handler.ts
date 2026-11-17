@@ -2477,6 +2477,136 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
       daily: [],
     };
 
+  // ── Encrypted Wordlists, Fence, Depth Sessions & MLPS Checks (demo) ──
+  if (path === "/wordlists" && m === "GET") {
+    return {
+      wordlists: [
+        {
+          id: 1,
+          name: "corp-seasonal-passwords",
+          kind: "password",
+          description: "Curated low-rate AD spray dictionary (AES-256-GCM)",
+          entry_count: 120,
+          sha256: "8f4b2c9a1e3d7041c6b823f99d1a02c4e5b789a0f123456789abcdef01234567",
+          created_by: "admin",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 2,
+          name: "internal-ops-users",
+          kind: "username",
+          description: "AD service & operator usernames",
+          entry_count: 45,
+          sha256: "3c1d9e7f4a2b8012d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6",
+          created_by: "admin",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ],
+    };
+  }
+  if (seg[0] === "tasks" && seg[2] === "fence") {
+    if (m === "GET" || m === "PUT") {
+      return {
+        task_id: seg[1],
+        fence_enabled: true,
+        fence_rules: ["10.10.0.0/16", "*.corp.local", "https://portal.corp.local:8443"],
+      };
+    }
+  }
+  if (seg[0] === "tasks" && seg[2] === "sessions" && m === "GET") {
+    return {
+      sessions: [
+        {
+          id: "sess-a1b2c3d4e5f6",
+          task_id: seg[1],
+          name: "dmz-jump-01",
+          kind: "ssh",
+          status: "open",
+          target: "10.10.1.20",
+          port: 22,
+          username: "ops",
+          socks_addr: "127.0.0.1:43821",
+          created_at: new Date().toISOString(),
+          last_active_at: new Date().toISOString(),
+        },
+        {
+          id: "sess-998877665544",
+          task_id: seg[1],
+          name: "core-db-hop",
+          kind: "ssh",
+          status: "open",
+          target: "10.10.50.12",
+          port: 22,
+          username: "dba",
+          jump_session_id: "sess-a1b2c3d4e5f6",
+          created_at: new Date().toISOString(),
+          last_active_at: new Date().toISOString(),
+        },
+      ],
+    };
+  }
+  if (seg[0] === "tasks" && seg[2] === "checks" && m === "GET") {
+    return {
+      checks: [
+        {
+          id: 1,
+          task_id: Number(seg[1]) || 1,
+          check_code: "NET-TLS",
+          domain: "Network & Transport Security",
+          title: "TLS 1.2/1.3 & Strong Ciphers",
+          status: "passed",
+          target: "https://portal.corp.local:8443",
+          evidence: "sslscan confirmed TLSv1.2+ only with ECDHE-RSA-AES256-GCM-SHA384",
+          notes: "",
+          tested_by: "worker-1",
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 2,
+          task_id: Number(seg[1]) || 1,
+          check_code: "AUTH-WEAKPWD",
+          domain: "Identity & Authentication",
+          title: "Weak / Default Credential Audit",
+          status: "failed",
+          target: "10.10.1.20:22",
+          evidence: "run_credential_audit matched ops:S********! (len=12)",
+          notes: "",
+          tested_by: "worker-1",
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 3,
+          task_id: Number(seg[1]) || 1,
+          check_code: "AD-DIR",
+          domain: "Active Directory & Identity",
+          title: "LDAP/Kerberos/ADCS Baseline",
+          status: "passed",
+          target: "10.10.0.10:389",
+          evidence: "Anonymous LDAP bind disabled; LDAPS enforced",
+          notes: "",
+          tested_by: "worker-2",
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 4,
+          task_id: Number(seg[1]) || 1,
+          check_code: "NET-BOUNDARY",
+          domain: "Zone Isolation & Lateral Boundary",
+          title: "DMZ-to-Core Segmentation",
+          status: "pending",
+          target: "10.10.50.0/24",
+          evidence: "",
+          notes: "",
+          tested_by: "",
+          updated_at: new Date().toISOString(),
+        },
+      ],
+      summary: { total: 4, passed: 2, failed: 1, pending: 1, na: 0, blocked: 0 },
+    };
+  }
+
   // ── Side questions (/btw): no side-question sessions in the demo ──
   // Must match explicitly: a path ending in s is treated as a collection by the read fallback below and returns [], leaving items undefined.
   if (seg.at(-1) === "side-questions") {

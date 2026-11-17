@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { CpuIcon, FlaskConicalIcon, KeyboardIcon, RadioTowerIcon, SearchIcon, ShieldAlertIcon } from "lucide-react";
+import { CpuIcon, FlaskConicalIcon, KeyboardIcon, LanguagesIcon, RadioTowerIcon, SearchIcon, ShieldAlertIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,12 @@ import { Switch } from "@/components/ui/switch";
 import { WordlistsVaultCard } from "@/components/wordlists-vault-card";
 import { api } from "@/lib/api";
 import { CHAT_SEND_MODE_OPTIONS, type ChatSendMode, setChatSendMode, useChatSendMode } from "@/lib/chat-send-mode";
+import type { Locale } from "@/lib/i18n/core";
+import { useI18n } from "@/lib/i18n/provider";
 import type { Settings } from "@/lib/types";
 
 export default function SystemSettingsPage() {
+  const { locale, setLocale, t } = useI18n();
   const [trafficCapture, setTrafficCapture] = React.useState(false);
   const [agentTrafficBinding, setAgentTrafficBinding] = React.useState(false);
   const [webSearch, setWebSearch] = React.useState(false);
@@ -256,8 +259,8 @@ export default function SystemSettingsPage() {
   return (
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">System settings</h1>
-        <p className="text-muted-foreground text-sm">Global runtime switches</p>
+        <h1 className="text-xl font-semibold tracking-tight">{t("settings.title")}</h1>
+        <p className="text-muted-foreground text-sm">{t("settings.subtitle")}</p>
       </div>
 
       {/* Multi-column instead of grid: the web search card is several times taller than the others and
@@ -701,6 +704,30 @@ export default function SystemSettingsPage() {
                     {option.label}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-4 break-inside-avoid md:mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <LanguagesIcon className="size-4" />
+              {t("settings.languageCardTitle")}
+            </CardTitle>
+            <CardDescription>{t("settings.languageCardDesc")}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between gap-4">
+            <Label htmlFor="ui-locale" className="text-sm font-normal text-muted-foreground">
+              {t("common.language")}
+            </Label>
+            <Select value={locale} onValueChange={(v) => setLocale(v as Locale)}>
+              <SelectTrigger id="ui-locale" className="w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="zh-CN">简体中文</SelectItem>
+                <SelectItem value="en">English</SelectItem>
               </SelectContent>
             </Select>
           </CardContent>

@@ -29,6 +29,8 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useI18n } from "@/lib/i18n/provider";
+import type { TranslationKey } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils";
 import type {
   NavBadge,
@@ -72,6 +74,18 @@ interface NavCollapsibleItemProps {
   readonly isSubItemActive: (url: string) => boolean;
 }
 
+function navGroupLabel(t: (k: TranslationKey) => string, group: NavGroup): string {
+  if (group.id === 1) return t("nav.group.functions");
+  if (group.id === 2) return t("nav.group.system");
+  return group.label ?? "";
+}
+
+function navItemTitle(t: (k: TranslationKey) => string, item: { id: string; title: string }): string {
+  const key = `nav.item.${item.id}` as TranslationKey;
+  const translated = t(key);
+  return translated === key ? item.title : translated;
+}
+
 function CollapsedIconFallback({ title }: { title: string }) {
   return (
     <span className="flex size-4 shrink-0 items-center justify-center rounded-xs font-medium text-[10px] outline">
@@ -111,13 +125,14 @@ export function NavMain({ items }: NavMainProps) {
     return item.subItems.some((sub) => path.startsWith(sub.url));
   };
 
+  const { t } = useI18n();
   return (
     <>
       {items.map((group) => (
         <SidebarGroup key={group.id}>
           {group.label && (
             <SidebarGroupLabel className="group-data-[collapsible=icon]:pointer-events-none">
-              {group.label}
+              {navGroupLabel(t, group)}
             </SidebarGroupLabel>
           )}
           <SidebarGroupContent>
@@ -186,9 +201,11 @@ function InterceptPendingBadge() {
 }
 
 function NavLinkItem({ item, isActive, showIconFallback }: NavLinkItemProps) {
+  const { t } = useI18n();
+  const title = navItemTitle(t, item);
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild aria-disabled={item.disabled} tooltip={item.title} isActive={isActive}>
+      <SidebarMenuButton asChild aria-disabled={item.disabled} tooltip={title} isActive={isActive}>
         <Link
           prefetch={false}
           href={item.url}
@@ -196,7 +213,7 @@ function NavLinkItem({ item, isActive, showIconFallback }: NavLinkItemProps) {
           rel={item.newTab ? "noreferrer" : undefined}
         >
           <NavLinkIcon item={item} showFallback={showIconFallback} />
-          <span>{item.title}</span>
+          <span>{title}</span>
         </Link>
       </SidebarMenuButton>
       {item.id === "approvals" ? <InterceptPendingBadge /> : <NavItemBadge badge={item.badge} />}

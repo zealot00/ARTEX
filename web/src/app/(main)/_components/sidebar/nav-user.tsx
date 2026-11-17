@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { EllipsisVertical, KeyRound, LogOut } from "lucide-react";
+import { EllipsisVertical, KeyRound, LanguagesIcon, LogOut } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 import { auth } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n/provider";
 import { getInitials } from "@/lib/utils";
 
 import { ChangePasswordDialog } from "./change-password-dialog";
@@ -30,6 +31,7 @@ export function NavUser({
 }) {
   const { isMobile } = useSidebar();
   const [pwOpen, setPwOpen] = React.useState(false);
+  const { locale, setLocale, t } = useI18n();
 
   function handleLogout() {
     auth.clearToken();
@@ -77,14 +79,18 @@ export function NavUser({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setLocale(locale === "zh-CN" ? "en" : "zh-CN")}>
+              <LanguagesIcon />
+              {t("user.switchLanguage")}: {locale === "zh-CN" ? "简体中文 → EN" : "English → 中文"}
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setPwOpen(true)}>
               <KeyRound />
-              Change password
+              {t("user.changePassword")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
               <LogOut />
-              Sign out
+              {t("user.signOut")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
