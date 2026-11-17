@@ -261,6 +261,8 @@ type Manager struct {
 	traffic     *traffic.Traffic       // process-wide recording proxy (may be nil)
 	enrich      *enrich.Engine         // engine-side asset auto-completion (DNS/HTTP)
 	interceptor *intercept.Interceptor // user-configured tool-call interception rules
+	onTaskEnd   func(taskID string)    // optional cleanup hook (e.g. closing persistent depth sessions)
+	onCloseAll  func()                 // optional shutdown hook
 
 	companyMu sync.Mutex // serializes task/company-scope commits with live handle registration
 	// taskStateMu preserves commit order between PostgreSQL lifecycle writes and
@@ -850,6 +852,9 @@ func (m *Manager) SetGlobalProxy(raw string) error {
 func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.onCloseAll != nil {
+		m.onCloseAll()
+	}
 	if m.enrich != nil {
 		m.enrich.Close()
 	}
@@ -1624,6 +1629,9 @@ func (m *Manager) SetTaskStatus(id, status string) error {
 	m.mu.Unlock()
 	if pgdb.IsTerminal(status) {
 		m.extractLessons(n)
+		if m.onTaskEnd != nil {
+			m.onTaskEnd(id)
+		}
 	}
 	return nil
 }
@@ -1645,6 +1653,9 @@ func (m *Manager) extractLessons(taskID int64) {
 // database failure and purged only after its commit.
 func (m *Manager) DeleteTask(id string, opts DeleteTaskOptions) (DeleteTaskResult, error) {
 	result := DeleteTaskResult{Deleted: id}
+	if m.onTaskEnd != nil {
+		m.onTaskEnd(id)
+	}
 	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return result, err

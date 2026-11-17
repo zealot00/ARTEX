@@ -1624,3 +1624,22 @@ CREATE INDEX IF NOT EXISTS idx_task_checks_task ON task_checks(task_id, id);
 DROP TRIGGER IF EXISTS trg_task_checks_upd ON task_checks;
 CREATE TRIGGER trg_task_checks_upd BEFORE UPDATE ON task_checks
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =====================================================================
+-- Encrypted, model-opaque wordlist metadata (plaintext stored only in Vault)
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS wordlists (
+    id          BIGSERIAL PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    kind        TEXT NOT NULL CHECK (kind IN ('username','password','userpass')),
+    description TEXT NOT NULL DEFAULT '',
+    entry_count INTEGER NOT NULL DEFAULT 0,
+    sha256      TEXT NOT NULL DEFAULT '',
+    created_by  TEXT NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_wordlists_kind ON wordlists(kind, name);
+DROP TRIGGER IF EXISTS trg_wordlists_upd ON wordlists;
+CREATE TRIGGER trg_wordlists_upd BEFORE UPDATE ON wordlists
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();

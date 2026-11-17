@@ -62,6 +62,8 @@ ARG FFUF_VERSION=v2.3.0
 ARG DALFOX_VERSION=v3.2.4
 ARG SQLMAP_VERSION=1.9.9
 ARG SQLMAP_COMMIT=cceda39208b5aad478de2c3f731df4239d9881f6
+ARG CHISEL_VERSION=v1.10.1
+ARG KUBECTL_VERSION=v1.31.4
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git unzip \
     && rm -rf /var/lib/apt/lists/*
@@ -97,6 +99,19 @@ RUN set -eux; \
       "ffuf_${FFUF_VERSION#v}_linux_${FFUF_ARCH}.tar.gz" "ffuf_${FFUF_VERSION#v}_checksums.txt" ffuf; \
     fetch "$gh/hahwul/dalfox/releases/download/$DALFOX_VERSION" \
       "dalfox-${DALFOX_VERSION}-linux-${DALFOX_ARCH}-musl.tar.gz" "dalfox-${DALFOX_VERSION}-linux-${DALFOX_ARCH}-musl.tar.gz.sha256" dalfox; \
+    ch_asset="chisel_${CHISEL_VERSION#v}_linux_${PD_ARCH}.gz"; \
+    curl -fsSL "$gh/jpillora/chisel/releases/download/${CHISEL_VERSION}/${ch_asset}" -o "/tmp/${ch_asset}"; \
+    curl -fsSL "$gh/jpillora/chisel/releases/download/${CHISEL_VERSION}/chisel_${CHISEL_VERSION#v}_checksums.txt" -o /tmp/chisel_sums.txt; \
+    want="$(awk -v a="$ch_asset" '$2 == a { print $1 }' /tmp/chisel_sums.txt)"; \
+    if [ -z "$want" ]; then echo "no checksum entry for $ch_asset" >&2; exit 1; fi; \
+    got="$(sha256sum "/tmp/${ch_asset}" | cut -d' ' -f1)"; \
+    if [ "$want" != "$got" ]; then echo "checksum mismatch for $ch_asset: want $want got $got" >&2; exit 1; fi; \
+    gzip -dc "/tmp/${ch_asset}" > /out/chisel && chmod 0755 /out/chisel; \
+    rm -f "/tmp/${ch_asset}" /tmp/chisel_sums.txt; \
+    curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${PD_ARCH}/kubectl" -o /out/kubectl; \
+    curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${PD_ARCH}/kubectl.sha256" -o /tmp/kubectl.sha256; \
+    echo "$(cat /tmp/kubectl.sha256)  /out/kubectl" | sha256sum -c -; \
+    chmod 0755 /out/kubectl && rm -f /tmp/kubectl.sha256; \
     git clone --quiet --depth 1 --branch "$SQLMAP_VERSION" https://github.com/sqlmapproject/sqlmap /opt/sqlmap; \
     commit="$(git -C /opt/sqlmap rev-parse HEAD)"; \
     if [ "$commit" != "$SQLMAP_COMMIT" ]; then echo "sqlmap commit mismatch: want $SQLMAP_COMMIT got $commit" >&2; exit 1; fi; \
@@ -157,6 +172,22 @@ RUN set -eux; \
     bbot --dry-run -t example.com -m wafw00f,paramminer_getparams,lightfuzz,sslcert,gowitness >/dev/null 2>&1 || true; \
     bbot --dry-run -t example.com -m wafw00f,paramminer_getparams,lightfuzz,sslcert,gowitness --no-color >/tmp/bbot-dry.log 2>&1 || true; \
     ! grep -qE "Installing|ERRR|CRITICAL" /tmp/bbot-dry.log || { cat /tmp/bbot-dry.log; exit 1; }
+
+# Post-exploitation, Active Directory, and lateral-movement CLI toolkit in an
+# isolated venv (impacket, netexec, bloodhound-python, certipy-ad, adidnsdump).
+# Guarded at runtime by lateral_gate, electronic fence, and prod_safe_mode.
+RUN set -eux; \
+    apt-get update && apt-get install -y --no-install-recommends gcc libffi-dev libssl-dev libkrb5-dev; \
+    python -m venv /opt/pentest-tools; \
+    /opt/pentest-tools/bin/pip install --no-cache-dir \
+      impacket netexec bloodhound certipy-ad adidnsdump; \
+    for bin in /opt/pentest-tools/bin/impacket-* /opt/pentest-tools/bin/nxc /opt/pentest-tools/bin/netexec \
+               /opt/pentest-tools/bin/bloodhound-python /opt/pentest-tools/bin/certipy /opt/pentest-tools/bin/adidnsdump; do \
+      if [ -e "$bin" ]; then ln -sf "$bin" "/usr/local/bin/$(basename "$bin")"; fi; \
+    done; \
+    apt-get purge -y --auto-remove gcc libffi-dev libssl-dev libkrb5-dev; \
+    rm -rf /var/lib/apt/lists/*; \
+    chisel --help >/dev/null; kubectl version --client >/dev/null
 
 
 # Preinstall Playwright MCP and CLI (globally) so no npx network download is needed at runtime.

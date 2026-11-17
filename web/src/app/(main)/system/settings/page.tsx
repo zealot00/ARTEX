@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { WordlistsVaultCard } from "@/components/wordlists-vault-card";
 import { api } from "@/lib/api";
 import { CHAT_SEND_MODE_OPTIONS, type ChatSendMode, setChatSendMode, useChatSendMode } from "@/lib/chat-send-mode";
 import type { Settings } from "@/lib/types";
@@ -704,6 +705,8 @@ export default function SystemSettingsPage() {
             </Select>
           </CardContent>
         </Card>
+
+        <WordlistsVaultCard />
       </div>
     </div>
   );

@@ -33,6 +33,7 @@ import type {
   DailyTokenBucket,
   DeleteTaskOptions,
   DeleteTaskResult,
+  DepthSessionInfo,
   Edge,
   EvidenceBodyPreview,
   ExplorationNodePage,
@@ -43,6 +44,11 @@ import type {
   FindingGroupsPage,
   FindingQuery,
   FindingRetest,
+  TaskCheckRow,
+  TaskChecksSummary,
+  TaskFenceConfig,
+  WordlistKind,
+  WordlistMeta,
   FindingStats,
   FindingStatus,
   FindingsPage,
@@ -1315,4 +1321,29 @@ export const api = {
   // ledger, exact per call, covering per-agent bindings / pooling / interrupted spend).
   tokensByModel: (task: string) =>
     get<{ models: ModelTokenStat[] }>(`/llm/records/by-model?task=${encodeURIComponent(task)}`),
+
+  // ---- encrypted wordlists (admin JWT only) ----
+  wordlists: (kind?: string) =>
+    get<{ wordlists: WordlistMeta[] }>(`/wordlists${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`).then((r) =>
+      arr(r.wordlists),
+    ),
+  createWordlist: (input: { name: string; kind: WordlistKind; description?: string; content: string }) =>
+    post<{ wordlist: WordlistMeta }>("/wordlists", input),
+  deleteWordlist: (id: number) => del<{ deleted: boolean; id: number }>(`/wordlists/${id}`),
+
+  // ---- task depth operations: fence, lateral gate, persistent sessions, MLPS checks ----
+  taskFence: (taskId: string) => get<TaskFenceConfig>(`/tasks/${taskId}/fence`),
+  updateTaskFence: (taskId: string, fenceEnabled: boolean, fenceRules: string[]) =>
+    put<TaskFenceConfig>(`/tasks/${taskId}/fence`, {
+      fence_enabled: fenceEnabled,
+      fence_rules: fenceRules,
+    }),
+  approveTaskLateral: (taskId: string, note = "") =>
+    post<{ approved: boolean; task: Task }>(`/tasks/${taskId}/lateral/approve`, { note }),
+  taskDepthSessions: (taskId: string) =>
+    get<{ sessions: DepthSessionInfo[] }>(`/tasks/${taskId}/sessions`).then((r) => arr(r.sessions)),
+  closeTaskDepthSession: (taskId: string, sessionId: string) =>
+    del<{ closed: boolean; session_id: string }>(`/tasks/${taskId}/sessions/${encodeURIComponent(sessionId)}`),
+  taskChecks: (taskId: string) =>
+    get<{ checks: TaskCheckRow[]; summary: TaskChecksSummary }>(`/tasks/${taskId}/checks`),
 };

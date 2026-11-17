@@ -27,5 +27,6 @@ Use this skill for MLPS checks `AD-DIR` and `WIN-SVC` during authorized internal
 - **LDAPS / StartTLS check** (`NET-TLS` + `AD-DIR`):
   `sslscan --no-colour <target>:636`
 - **Account lockout safety**: never run password spraying against domain controllers without checking lockout thresholds first; respect `prod_safe_mode`.
-- If `lateral_gate` is enabled, wait for foothold approval (`POST /api/tasks/{id}/lateral/approve`) before running directory graph collection or credentialed lateral tools.
+  - When conducting authorized domain password spraying, use `run_password_spray(task_id=..., target=..., protocol="smb"|"ldap"|"winrm", user_list=..., pass_list=..., start_offset=0, max_passwords=1, delay_seconds=2)` instead of `hydra` or raw `nxc` with plaintext password files. It enforces the electronic fence, `lateral_gate`, inter-round lockout delay, and password masking.
+- If `lateral_gate` is enabled, wait for foothold approval (`POST /api/tasks/{id}/lateral/approve`) before running directory graph collection (`bloodhound-python`), ADCS auditing (`certipy`), DNS enumeration (`adidnsdump`), or credentialed `nxc` / `impacket-*` tools.
 - Record all verified outcomes (including `"passed"` and `"na"` for Linux-only environments) via `record_check_result(check_code="AD-DIR", ...)`.

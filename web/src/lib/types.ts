@@ -39,6 +39,13 @@ export interface Task {
   archive_blocked_by_task_id?: string; // live direct dependent that must be archived first
   company_ids?: number[]; // associated company scopes; current company assets join the task at creation
   coverage_enabled?: boolean; // asset coverage feature switch (fixed at creation, on by default); false = do not compute/show coverage
+  compliance_profile?: string;
+  prod_safe_mode?: boolean;
+  lateral_gate?: boolean;
+  lateral_approved?: boolean;
+  parked_reason?: string;
+  fence_enabled?: boolean;
+  fence_rules?: string[];
 }
 
 export interface TaskCategory {
@@ -1617,4 +1624,65 @@ export interface InterceptExecution {
   session: string;
   seq: number;
   items: Activity[];
+}
+
+export type WordlistKind = "username" | "password" | "userpass";
+
+export interface WordlistMeta {
+  id: number;
+  name: string;
+  kind: WordlistKind;
+  description: string;
+  entry_count: number;
+  sha256: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DepthSessionInfo {
+  id: string;
+  task_id: string;
+  name: string;
+  kind: "pty" | "ssh" | "tunnel" | string;
+  status: "open" | "closed" | "error" | string;
+  target?: string;
+  port?: number;
+  username?: string;
+  jump_session_id?: string;
+  socks_addr?: string;
+  pid?: number;
+  last_error?: string;
+  created_at: string;
+  last_active_at: string;
+}
+
+export interface TaskFenceConfig {
+  task_id: string;
+  fence_enabled: boolean;
+  fence_rules: string[];
+}
+
+export interface TaskCheckRow {
+  id: number;
+  task_id: number;
+  check_code: string;
+  domain: string;
+  title: string;
+  status: "pending" | "passed" | "failed" | "na" | "blocked" | string;
+  target: string;
+  evidence: string;
+  notes: string;
+  finding_id?: number | null;
+  tested_by: string;
+  updated_at: string;
+}
+
+export interface TaskChecksSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  pending: number;
+  na: number;
+  blocked: number;
 }

@@ -26,7 +26,9 @@ import (
 	"github.com/Autumn-27/artex/llmpool"
 	"github.com/Autumn-27/artex/llmrec"
 	"github.com/Autumn-27/artex/report"
+	"github.com/Autumn-27/artex/sessions"
 	"github.com/Autumn-27/artex/traffic"
+	"github.com/Autumn-27/artex/wordlists"
 	"github.com/Autumn-27/norma/llm"
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
@@ -44,8 +46,10 @@ type Server struct {
 	engine *Engine
 	ctx    context.Context
 
-	skillDir string // root directory for skill subdirectories
-	jwtKey   []byte // HS256 signing key loaded from / generated into keyDir/jwt.key
+	skillDir string            // root directory for skill subdirectories
+	jwtKey   []byte            // HS256 signing key loaded from / generated into keyDir/jwt.key
+	wlVault  *wordlists.Vault  // AES-256-GCM encrypted wordlist vault in keyDir/wordlists
+	sessMgr  *sessions.Manager // persistent depth/pivot session manager per task
 
 	scrubSecrets bool // drop ARTEX_PG_DSN and the API keys from the environment once read (binary only)
 
@@ -158,7 +162,19 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 	if err != nil {
 		log.Fatalf("[auth] JWT key: %v", err)
 	}
-	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, jwtKey: key, chatBusy: map[string]bool{},
+	var wlVault *wordlists.Vault
+	if vdir := strings.TrimSpace(keyDir); vdir != "" {
+		wlVault, err = wordlists.NewVault(vdir)
+		if err != nil {
+			log.Fatalf("[wordlists] vault: %v", err)
+		}
+	} else if ddir := strings.TrimSpace(dataDir); ddir != "" {
+		wlVault, err = wordlists.NewVault(filepath.Join(ddir, "keys"))
+		if err != nil {
+			log.Fatalf("[wordlists] vault: %v", err)
+		}
+	}
+	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, jwtKey: key, wlVault: wlVault, sessMgr: sessions.NewManager(), chatBusy: map[string]bool{},
 		chatCancel: map[string]context.CancelCauseFunc{}, triggerQ: map[string][]triggeredRun{},
 		triggerActive: map[string]int{}, triggerCfg: map[string]triggerBehavior{},
 		profChatAgents: map[int64]*agent.ChatAgent{},
@@ -167,6 +183,10 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		loginLimit: newLoginLimiter(time.Now)}
 	for _, o := range opts {
 		o(s)
+	}
+	if s.m != nil && s.sessMgr != nil {
+		s.m.onTaskEnd = func(taskID string) { s.sessMgr.CloseTask(taskID) }
+		s.m.onCloseAll = s.sessMgr.CloseAll
 	}
 	s.initSetupToken()
 	s.initSideQuestions()
@@ -697,6 +717,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/api-keys", s.createAPIKey)
 	mux.HandleFunc("DELETE /api/api-keys/{id}", s.revokeAPIKey)
 
+	mux.HandleFunc("GET /api/wordlists", s.listWordlists)
+	mux.HandleFunc("POST /api/wordlists", s.createWordlist)
+	mux.HandleFunc("DELETE /api/wordlists/{id}", s.deleteWordlist)
+
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/stats", s.stats)
 	mux.HandleFunc("GET /api/logs", s.getLogs)
@@ -724,6 +748,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/tasks/{id}/lateral/approve", s.approveTaskLateral)
 	mux.HandleFunc("GET /api/tasks/{id}/fence", s.getTaskFence)
 	mux.HandleFunc("PUT /api/tasks/{id}/fence", s.updateTaskFence)
+	mux.HandleFunc("GET /api/tasks/{id}/sessions", s.listTaskSessions)
+	mux.HandleFunc("DELETE /api/tasks/{id}/sessions/{sid}", s.closeTaskSession)
 	mux.HandleFunc("GET /api/tasks/{id}/lessons", s.taskLessons)
 	mux.HandleFunc("POST /api/tasks/{id}/lessons/extract", s.extractTaskLessons)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTaskMetadata)

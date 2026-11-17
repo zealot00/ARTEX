@@ -36,6 +36,8 @@ var noTargetTools = toolSet(
 	"update_finding_report", "get_finding_traffic", "bind_finding_traffic",
 	"get_finding_retest_context", "record_finding_retest_result",
 	"list_task_checks", "record_check_result",
+	"list_wordlists",
+	"depth_session_list", "depth_session_close",
 	"delete_assets_by_host", "create_skill", "update_skill_file",
 	// the operator runs the command, not the platform
 	"ask_operator",
