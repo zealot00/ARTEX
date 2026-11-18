@@ -4,6 +4,8 @@ import * as React from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { useI18n } from "@/lib/i18n/provider";
+
 // Tailwind-styled element overrides (no typography plugin in this project, so we
 // style each element). `node` is stripped — it's not a valid DOM attribute.
 const components: Components = {
@@ -49,8 +51,9 @@ const components: Components = {
 };
 
 export function Markdown({ text }: { text: string }) {
+  const { locale } = useI18n();
   return (
-    <div className="min-w-0 space-y-1.5 text-sm [&>*:first-child]:mt-0">
+    <div lang={locale} className="min-w-0 space-y-1.5 text-sm [&>*:first-child]:mt-0">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {text}
       </ReactMarkdown>

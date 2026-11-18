@@ -9,6 +9,7 @@ import { InputGroupTextarea } from "@/components/ui/input-group";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import {
   activeMention,
   type ChatMention,
@@ -26,6 +27,7 @@ type Props = Omit<React.ComponentProps<"textarea">, "value" | "onChange" | "ref"
 };
 
 export function MentionTextarea({ value, onValueChange, onKeyDown, className, inputGroup, disabled, ...props }: Props) {
+  const { t } = useI18n();
   const textarea = React.useRef<HTMLTextAreaElement>(null);
   const composing = React.useRef(false);
   const pendingKeyboardIndex = React.useRef<number | null>(null);
@@ -238,7 +240,7 @@ export function MentionTextarea({ value, onValueChange, onKeyDown, className, in
                 ? "Choose a reference type"
                 : `Search ${mentionKinds.find((kind) => kind.kind === search.kind)?.label ?? "all records"}`}
             </span>
-            <span>↑↓ Select · Enter Confirm · Esc Close</span>
+            <span>{t("mention.hint")}</span>
           </div>
           <div
             id={listId}
@@ -272,7 +274,7 @@ export function MentionTextarea({ value, onValueChange, onKeyDown, className, in
             {!categories.length && loading && (
               <div role="status" className="flex items-center gap-2 p-3 text-muted-foreground text-sm">
                 <Loader2Icon className="size-4 animate-spin" />
-                Searching…
+                {t("mention.searching")}
               </div>
             )}
             {!categories.length && !loading && error && (
@@ -282,7 +284,7 @@ export function MentionTextarea({ value, onValueChange, onKeyDown, className, in
             )}
             {!categories.length && !loading && !error && !items.length && (
               <div role="status" className="p-3 text-muted-foreground text-sm">
-                No matching records; try a different name, address, or ID
+                {t("mention.empty")}
               </div>
             )}
             {items.map((item, index) => (

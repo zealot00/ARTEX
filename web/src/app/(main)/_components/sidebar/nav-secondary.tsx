@@ -11,6 +11,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { useI18n } from "@/lib/i18n/provider";
 
 export function NavSecondary({
   items,
@@ -22,8 +23,9 @@ export function NavSecondary({
     icon: LucideIcon;
   }[];
 } & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
+  const { locale } = useI18n();
   return (
-    <SidebarGroup {...props}>
+    <SidebarGroup {...props} data-locale={locale}>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => (

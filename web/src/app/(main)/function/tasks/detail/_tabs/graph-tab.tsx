@@ -5,9 +5,11 @@ import * as React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { ExplorationGraph } from "@/components/exploration-graph";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { Edge, TaskNode } from "@/lib/types";
 
 export function GraphTab({ taskId }: { taskId: string }) {
+  const { t } = useI18n();
   const [nodes, setNodes] = React.useState<TaskNode[]>([]);
   const [edges, setEdges] = React.useState<Edge[]>([]);
   // Signature of the previous graph data: polling skips setState on identical data to avoid
@@ -48,7 +50,7 @@ export function GraphTab({ taskId }: { taskId: string }) {
   return (
     <Card>
       <CardContent className="p-0">
-        <ExplorationGraph nodes={nodes} edges={edges} className="h-[72vh]" />
+        <ExplorationGraph nodes={nodes} edges={edges} emptyHint={t("graph.emptyHint")} className="h-[72vh]" />
       </CardContent>
     </Card>
   );

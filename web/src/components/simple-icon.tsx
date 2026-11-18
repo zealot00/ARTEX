@@ -4,6 +4,7 @@ import type * as React from "react";
 
 import type { SimpleIcon as SimpleIconType } from "simple-icons";
 
+import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
 type SimpleIconProps = {
@@ -12,10 +13,12 @@ type SimpleIconProps = {
 } & React.SVGProps<SVGSVGElement>;
 
 export function SimpleIcon({ icon, className, ...props }: SimpleIconProps) {
+  const { locale } = useI18n();
   const { title, path } = icon;
 
   return (
     <svg
+      lang={locale}
       viewBox="0 0 24 24"
       aria-label={title}
       aria-hidden="false"
