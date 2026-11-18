@@ -2,10 +2,11 @@
 
 # ARTEX
 
-AI autonomous penetration testing system (Go backend + Next.js frontend)
+AI autonomous penetration testing & internal lateral-defense platform (Go backend + Next.js frontend)
 
+English · [中文 README](README_zh.md) · [中文使用手册](docs/USER_MANUAL_zh.md)
 
- Fork of [ARTEX by Autumn-27](https://github.com/Autumn-27) · English translation of the Chinese source · maintained publicly under AGPL-3.0
+ Fork of [ARTEX by Autumn-27](https://github.com/Autumn-27) · maintained independently with enterprise intranet, MLPS 2.0, OOB/PoC, and bilingual (`zh-CN`/`en`) capabilities under AGPL-3.0
 
 </div>
 
@@ -261,6 +262,8 @@ Optional: `ARTEX_LLM_PROVIDER` (anthropic | openai | openai-responses | ollama) 
 - `ARTEX_LLM_REQUIRE_BASE_URL=1`: require an explicit `base_url` even without a host allowlist.
 - `ARTEX_LLM_DISABLE_ENV_FALLBACK=1`: disable automatic startup fallback to `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` when no active DB profile exists.
 - `ARTEX_DISABLE_WEB_SEARCH=1`: force-disable outbound `web_search` tool execution and settings tests.
+- `ARTEX_NUCLEI_TEMPLATES_DIR` / `NUCLEI_TEMPLATES_DIR`: path to offline `nuclei-templates` directory (defaults to `/opt/nuclei-templates` in the Docker image).
+- `ARTEX_OOB_BASE_URL`: externally reachable base URL for intranet OOB callbacks (e.g. `http://10.10.0.5:8787`), used by `oob_create_token` and `run_poc` when verifying blind SSRF/XXE/RCE without public `interactsh`.
 - All LLM and model-discovery HTTP clients refuse `30x` redirects so API keys and prompts never follow unexpected upstream redirects.
 
 **Base URL**: for the Anthropic format, enter the host **without** a `/v1` suffix (e.g. `https://api.anthropic.com`) — the provider appends `/v1/messages` itself, so a base ending in `/v1` becomes `https://api.anthropic.com/v1/v1/messages`. OpenAI-format providers append `/chat/completions` (or `/responses` for the `openai-responses` format), so their base **does** end in `/v1` (e.g. `https://api.openai.com/v1`).
@@ -318,6 +321,7 @@ External orchestrators, ticketing pipelines, or coding agents can invoke ARTEX a
 - **Persistent depth sessions & multi-hop SOCKS5 pivoting**: once lateral execution is approved, agents manage task-scoped persistent `pty`, `ssh` (with `jump_session_id` multi-hop chaining, built-in `127.0.0.1` SOCKS5 proxy, and server-side `credential_id` resolution), and `tunnel` processes via `depth_session_open` / `depth_session_exec` / `depth_session_list` / `depth_session_close`; operators inspect or terminate live sessions via `GET`/`DELETE /api/tasks/{id}/sessions`, and all sessions auto-close when a task finishes or is deleted.
 - **Electronic fence (strict scope geofence)**: pass `fence_rules` (CIDRs, IPs, domains, `*.domain` wildcards, or URL prefixes) and `fence_enabled: true` on `POST /api/tasks` (or update via `GET`/`PUT /api/tasks/{id}/fence`) to hard-block any tool target, broader CIDR scan, or `30x` HTTP redirect outside the authorized boundary across Planner, Workers, and MainAgent.
 - **Encrypted, model-opaque wordlist vault**: manage password/username/userpass dictionaries via admin-JWT-only endpoints (`GET /api/wordlists`, `POST /api/wordlists`, `DELETE /api/wordlists/{id}`); entries are encrypted at rest with AES-256-GCM under `<keyDir>/wordlists/` (outside the agent workspace and never stored in PostgreSQL), while agents invoke `list_wordlists` (metadata only), `run_credential_audit`, and lockout-safe `run_password_spray` (`nxc`-backed, capped at `1–3` passwords/round with electronic-fence, `lateral_gate`, and `prod_safe_mode` enforcement plus masked password output).
+- **Private PoC repository, offline templates & intranet OOB verification**: manage internal `nuclei_yaml` / `python_script` PoCs via admin-JWT-only endpoints (`GET/POST /api/pocs`, `DELETE /api/pocs/{id}`); agents discover both private PoCs and offline `/opt/nuclei-templates` via `search_pocs`, execute them under electronic-fence and `prod_safe_mode` rate limits via `run_poc`, and verify blind vulnerabilities in air-gapped networks via `/oob/{token}` (`oob_create_token`, `oob_poll_hits`, `GET /api/tasks/{id}/oob`) while retaining chained secondary exploitation (`skills/poc-verify-exploit`).
 - **Web UI controls & bilingual (`zh-CN` / `en`) support**: manage encrypted dictionaries on `/system/settings` (`Encrypted Wordlists`), edit electronic-fence rules, approve foothold-gated lateral movement, and inspect/terminate live depth sessions on `/function/tasks/detail` (`Depth & Fence` tab), and switch between Simplified Chinese (`zh-CN`) and English (`en`) from the topbar (`web/src/lib/i18n/`, 100% static-export coverage).
 - **Aggregated polling**: `GET /api/tasks/{id}/workorder` returns `{task, terminal, outcome, pending_approvals, pending_approval_count}` in one request, alongside `GET /api/exploration/findings?task={id}`, `GET /api/report?task={id}`, and SSE `GET /api/exploration/activity/stream?task={id}`.
 
