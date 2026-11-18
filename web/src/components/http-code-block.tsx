@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useI18n } from "@/lib/i18n/provider";
 import { cn, copyText } from "@/lib/utils";
 
 function statusTone(status: number) {
@@ -112,6 +113,7 @@ function HighlightedBody({ body, format }: { body: string; format: BodyFormat })
 }
 
 export function HttpCodeBlock({ raw }: { raw: string }) {
+  const { t } = useI18n();
   const [wrapLines, setWrapLines] = React.useState(true);
   const [copied, setCopied] = React.useState(false);
   const value = raw || "(empty)";
@@ -166,13 +168,13 @@ export function HttpCodeBlock({ raw }: { raw: string }) {
               type="button"
               variant="ghost"
               size="icon-xs"
-              aria-label={copied ? "Message copied" : "Copy message"}
+              aria-label={copied ? t("httpBlock.copiedMessage") : t("httpBlock.copyMessage")}
               onClick={() => void copyPacket()}
             >
               {copied ? <CheckIcon /> : <CopyIcon />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">{copied ? "Copied" : "Copy message"}</TooltipContent>
+          <TooltipContent side="bottom">{copied ? t("copy.defaultSuccess") : t("httpBlock.copyMessage")}</TooltipContent>
         </Tooltip>
       </div>
       {/* biome-ignore lint/a11y/useSemanticElements: textarea cannot preserve line numbers and syntax-highlighting markup. */}

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import { Markdown } from "@/components/markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -745,6 +746,7 @@ export function Transcript({
   fetchDetail?: (seq: number) => Promise<string>;
   focusedSeq?: number;
 }) {
+  const { t } = useI18n();
   const transcriptRef = React.useRef<HTMLDivElement>(null);
   const [focusPadding, setFocusPadding] = React.useState(0);
   React.useLayoutEffect(() => {
@@ -767,7 +769,7 @@ export function Transcript({
             <span className="size-1.5 animate-bounce rounded-full bg-blue-500 [animation-delay:-0.15s]" />
             <span className="size-1.5 animate-bounce rounded-full bg-blue-500" />
           </span>
-          Live streaming…
+          {t("transcript.liveStreaming")}
         </div>
       )}
     </div>

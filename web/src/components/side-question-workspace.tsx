@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { useI18n } from "@/lib/i18n/provider";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -56,6 +57,7 @@ function SidePanel({
   label: string;
   composerLayout: ComposerLayout;
 }) {
+  const { t } = useI18n();
   const inlineComposer = composerLayout === "inline";
   const [confirm, setConfirm] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
@@ -108,15 +110,15 @@ function SidePanel({
       >
         {side.nextCursor > 0 && (
           <Button variant="ghost" size="sm" onClick={() => void side.load(side.nextCursor)}>
-            Load earlier side Q&A
+            {t("sideQuestion.loadEarlier")}
           </Button>
         )}
         {side.loading && <Skeleton className="h-16 w-full" />}
         {!side.loading && side.items.length === 0 && (
           <Empty>
             <EmptyHeader>
-              <EmptyTitle>Ask a question anytime</EmptyTitle>
-              <EmptyDescription>Answered from the current agent's context while the main task keeps running.</EmptyDescription>
+              <EmptyTitle>{t("sideQuestion.emptyTitle")}</EmptyTitle>
+              <EmptyDescription>{t("sideQuestion.emptyDesc")}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}

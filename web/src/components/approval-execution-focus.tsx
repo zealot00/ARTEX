@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { Activity, InterceptExecution } from "@/lib/types";
 
 // Resolve one exact persisted call, independently of transcript pagination.
@@ -108,6 +109,7 @@ export function ApprovalExecutionFocus({
   focus: ReturnType<typeof useApprovalFocus>;
   history: ReturnType<typeof useApprovalHistory>;
 }) {
+  const { t } = useI18n();
   const { state } = focus;
   if (!state) return null;
   const error = state.error || history.error;
@@ -118,19 +120,19 @@ export function ApprovalExecutionFocus({
     >
       <span className={error ? "text-destructive" : "text-muted-foreground"}>
         {error
-          ? `Unable to locate: ${error}`
+          ? t("approvalFocus.unable", { error })
           : history.ready
-            ? `Expanded the tool call for approval #${state.id}`
-            : `Loading the conversation position of approval #${state.id}…`}
+            ? t("approvalFocus.expanded", { id: state.id })
+            : t("approvalFocus.loading", { id: state.id })}
       </span>
       <div className="flex gap-2">
         {error ? (
           <Button size="sm" variant="outline" onClick={focus.retry}>
-            Retry locate
+            {t("approvalFocus.retry")}
           </Button>
         ) : null}
         <Button size="sm" variant="ghost" onClick={focus.close}>
-          Cancel locate
+          {t("approvalFocus.cancel")}
         </Button>
       </div>
     </div>
