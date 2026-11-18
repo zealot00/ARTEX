@@ -318,6 +318,7 @@ External orchestrators, ticketing pipelines, or coding agents can invoke ARTEX a
 - **Persistent depth sessions & multi-hop SOCKS5 pivoting**: once lateral execution is approved, agents manage task-scoped persistent `pty`, `ssh` (with `jump_session_id` multi-hop chaining, built-in `127.0.0.1` SOCKS5 proxy, and server-side `credential_id` resolution), and `tunnel` processes via `depth_session_open` / `depth_session_exec` / `depth_session_list` / `depth_session_close`; operators inspect or terminate live sessions via `GET`/`DELETE /api/tasks/{id}/sessions`, and all sessions auto-close when a task finishes or is deleted.
 - **Electronic fence (strict scope geofence)**: pass `fence_rules` (CIDRs, IPs, domains, `*.domain` wildcards, or URL prefixes) and `fence_enabled: true` on `POST /api/tasks` (or update via `GET`/`PUT /api/tasks/{id}/fence`) to hard-block any tool target, broader CIDR scan, or `30x` HTTP redirect outside the authorized boundary across Planner, Workers, and MainAgent.
 - **Encrypted, model-opaque wordlist vault**: manage password/username/userpass dictionaries via admin-JWT-only endpoints (`GET /api/wordlists`, `POST /api/wordlists`, `DELETE /api/wordlists/{id}`); entries are encrypted at rest with AES-256-GCM under `<keyDir>/wordlists/` (outside the agent workspace and never stored in PostgreSQL), while agents invoke `list_wordlists` (metadata only), `run_credential_audit`, and lockout-safe `run_password_spray` (`nxc`-backed, capped at `1–3` passwords/round with electronic-fence, `lateral_gate`, and `prod_safe_mode` enforcement plus masked password output).
+- **Web UI controls & bilingual (`zh-CN` / `en`) support**: manage encrypted dictionaries on `/system/settings` (`Encrypted Wordlists`), edit electronic-fence rules, approve foothold-gated lateral movement, and inspect/terminate live depth sessions on `/function/tasks/detail` (`Depth & Fence` tab), and switch between Simplified Chinese (`zh-CN`) and English (`en`) from the topbar (`web/src/lib/i18n/`, 100% static-export coverage).
 - **Aggregated polling**: `GET /api/tasks/{id}/workorder` returns `{task, terminal, outcome, pending_approvals, pending_approval_count}` in one request, alongside `GET /api/exploration/findings?task={id}`, `GET /api/report?task={id}`, and SSE `GET /api/exploration/activity/stream?task={id}`.
 
 Example (internal MLPS assessment with electronic fence + foothold-gated lateral stage):
@@ -344,6 +345,20 @@ curl -X POST http://127.0.0.1:8787/api/tasks \
 curl -X POST -H "X-API-Key: artex_ak_..." http://127.0.0.1:8787/api/tasks/1/lateral/approve
 curl -H "X-API-Key: artex_ak_..." http://127.0.0.1:8787/api/tasks/1/report/mlps
 ```
+
+### Internal Pentest & Lateral Defense Capability Map
+
+| Domain | ARTEX Capabilities & Tooling | Readiness | Notes / Boundaries |
+| :--- | :--- | :--- | :--- |
+| **Attack Surface & Recon** | `bbot`, `subfinder`, `httpx`, `nmap`, `katana`, `playwright`, ScopeSentry sync, `skills/bbot-recon`, `skills/scopesentry` | Production-ready | Dual-graph exploration + asset coverage tracking |
+| **Web, API & Middleware** | `nuclei`, `ffuf`, `dalfox`, `sqlmap`, `sslscan`, `skills/api-recon`, `skills/api-security`, `skills/codeaudit`, `skills/php2shell` | Production-ready | Machine-checked finding verification + traffic evidence |
+| **Auth & Encrypted Wordlist Vault** | AES-256-GCM vault (`wordlists/vault.go`), `list_wordlists`, `run_credential_audit` (`hydra`), `run_password_spray` (`nxc`), `skills/service-auth-audit` | Production-ready | Model-opaque (plaintext never enters LLM context); lockout-safe spray cap (`1–3` passwords/round) |
+| **AD / Windows Lateral Audit** | `impacket`, `netexec` (`nxc`), `bloodhound-python`, `certipy-ad`, `adidnsdump`, `ldap-utils`, `krb5-user`, `smbclient`, `skills/ad-windows-audit` | Ready (Linux-remote) | Covers SMB/WinRM/LDAP/Kerberos/ADCS remotely; no Windows-native C2/SharpHound binary compilation inside container |
+| **Cloud & Kubernetes Audit** | `kubectl`, `skills/cloud-k8s-audit`, `skills/host-privesc-audit` | Ready (API/RBAC) | Covers K8s API/RBAC/pod/container posture & Linux privilege-escalation checks |
+| **Pivoting & Persistent Sessions** | `sessions/manager.go`, `depth_session_open`/`exec`/`list`/`close`, `ssh` SOCKS5 + `jump_session_id` multi-hop chaining, `chisel`, `proxychains4`, `socat`, `skills/lateral-movement` | Production-ready | Task-scoped lifecycle with auto-cleanup on task completion/deletion |
+| **Scope & Safety Guardrails** | Electronic fence (`guard/fence.go`), `lateral_gate` foothold parking, `prod_safe_mode`, LLM egress allowlist, scoped `artex_ak_` keys | Production-ready | Fail-closed CIDR/domain/URL/`30x` redirect enforcement across Planner, Workers, and MainAgent |
+| **MLPS 2.0 Compliance & Reporting** | 12-domain `task_checks` matrix (`AD-DIR`, `WIN-SVC`, etc.), negative `"passed"` evidence, `GET /api/tasks/{id}/report/mlps`, `skills/mlps-pentest` | Production-ready | Supports both positive findings and negative compliance evidence |
+| **Web UI & Bilingual Ops** | `/system/settings` (`Encrypted Wordlists`), `/function/tasks/detail` (`Depth & Fence`), `zh-CN` / `en` i18n (`web/src/lib/i18n/`) | Production-ready | Static-export (`NEXT_EXPORT=1`) compatible; 100% frontend module coverage |
 
 ---
 
