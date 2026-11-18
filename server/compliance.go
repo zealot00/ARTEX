@@ -167,7 +167,7 @@ func (s *Server) upsertTaskCheck(w http.ResponseWriter, r *http.Request) {
 		Notes     string `json:"notes"`
 		FindingID *int64 `json:"finding_id"`
 	}
-	if err := decode(r, &req); err != nil {
+	if err := decode(w, r, &req); err != nil {
 		writeErr(w, 400, "bad json: "+err.Error())
 		return
 	}

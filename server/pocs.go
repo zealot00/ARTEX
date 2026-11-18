@@ -64,7 +64,7 @@ func (s *Server) createPoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req db.UpsertPocInput
-	if err := decode(r, &req); err != nil {
+	if err := decode(w, r, &req); err != nil {
 		writeErr(w, 400, "invalid JSON")
 		return
 	}

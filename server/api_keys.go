@@ -206,7 +206,7 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		Scopes         []string `json:"scopes"`
 		ExpiresInHours *int     `json:"expires_in_hours"`
 	}
-	if err := decode(r, &req); err != nil {
+	if err := decode(w, r, &req); err != nil {
 		writeErr(w, 400, "bad json: "+err.Error())
 		return
 	}

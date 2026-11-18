@@ -162,7 +162,7 @@ func (s *Server) approveTaskLateral(w http.ResponseWriter, r *http.Request) {
 		Note string `json:"note"`
 	}
 	if r.Body != nil {
-		_ = decode(r, &req)
+		_ = decode(w, r, &req)
 	}
 	taskID, _ := strconv.ParseInt(t.ID, 10, 64)
 	if err := s.m.PG().SetTaskLateralState(taskID, true, ""); err != nil {
