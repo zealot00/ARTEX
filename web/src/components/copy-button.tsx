@@ -6,6 +6,7 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/lib/i18n/provider";
 import { cn, copyText } from "@/lib/utils";
 
 type CopyButtonProps = {
@@ -23,12 +24,15 @@ type CopyButtonProps = {
 // contexts it degrades automatically (see copyText).
 export function CopyButton({
   text,
-  successMessage = "Copied",
-  label = "Copy",
+  successMessage,
+  label,
   size = "sm",
   variant = "outline",
   className,
 }: CopyButtonProps) {
+  const { t } = useI18n();
+  const resolvedSuccess = successMessage ?? t("copy.defaultSuccess");
+  const resolvedLabel = label ?? t("copy.defaultLabel");
   const [copied, setCopied] = React.useState(false);
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -43,11 +47,11 @@ export function CopyButton({
     const ok = await copyText(text);
     if (ok) {
       setCopied(true);
-      toast.success(successMessage);
+      toast.success(resolvedSuccess);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(false), 1500);
     } else {
-      toast.error("Copy failed; select the text manually to copy");
+      toast.error(t("copy.failedToast"));
     }
   }
 
@@ -61,7 +65,7 @@ export function CopyButton({
       onClick={handleCopy}
     >
       {copied ? <CheckIcon /> : <CopyIcon />}
-      {label}
+      {resolvedLabel}
     </Button>
   );
 }

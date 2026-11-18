@@ -7,6 +7,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useI18n } from "@/lib/i18n/provider";
 
 interface TablePaginationProps {
   page: number; // 1-based
@@ -38,6 +39,7 @@ export function TablePagination({
   onPageSizeChange,
   pageSizeOptions = [10, 20, 50],
 }: TablePaginationProps) {
+  const { t } = useI18n();
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const from = total === 0 ? 0 : (safePage - 1) * pageSize + 1;
@@ -64,13 +66,13 @@ export function TablePagination({
             ))}
           </SelectContent>
         </Select>
-        <span>per page</span>
+        <span>{t("pagination.perPage")}</span>
         {total > 0 ? (
           <span className="tabular-nums">
-            {from}–{to} / {total} total
+            {t("pagination.rangeTotal", { from, to, total })}
           </span>
         ) : (
-          <span>0 total</span>
+          <span>{t("pagination.zeroTotal")}</span>
         )}
       </div>
 
@@ -83,7 +85,7 @@ export function TablePagination({
                 size="icon-sm"
                 disabled={safePage === 1}
                 onClick={() => onPageChange(safePage - 1)}
-                aria-label="Previous page"
+                aria-label={t("pagination.prev")}
               >
                 <ChevronLeftIcon className="size-4" />
               </Button>

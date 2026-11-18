@@ -25,6 +25,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Markdown } from "@/components/markdown";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import type { Agent, AgentDetail, AgentTrigger, MCPServer, PromptVar, PromptVersion, Settings, SkillItem, Tool } from "@/lib/types";
 
@@ -36,6 +37,7 @@ const TRAFFIC_TOOL_KEYS = new Set(["traffic_search", "traffic_get"]);
 // drawer (and reused full-page for deep links). Tabs: Config & Prompt / MCP / Skill /
 // Tools. Config + prompt save as before; visibility + tool bindings toggle live.
 export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?: () => void }) {
+  const { t } = useI18n();
   const [detail, setDetail] = React.useState<AgentDetail | null>(null);
   const [versions, setVersions] = React.useState<PromptVersion[]>([]);
   const [variables, setVariables] = React.useState<PromptVar[]>([]);
@@ -123,11 +125,11 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
   async function savePrompt() {
     try {
       const r = await api.saveAgentPrompt(agentKey, prompt);
-      toast.success(`Saved as version v${r.version}`);
+      toast.success(t("agentEditor.savedVersionToast", { version: r.version }));
       reload();
       onSaved?.();
     } catch (e) {
-      toast.error("Save failed: " + (e as Error).message);
+      toast.error(t("agentEditor.saveFailedToast", { error: (e as Error).message }));
     }
   }
   async function resetPrompt() {

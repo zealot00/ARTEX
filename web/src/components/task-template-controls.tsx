@@ -33,6 +33,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { AssetInterceptRuleInput, TaskCategory, TaskTemplate } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -365,6 +366,7 @@ export function TaskTemplateControls({
   onApply,
   portalContainer,
 }: TaskTemplateControlsProps) {
+  const { t } = useI18n();
   const [templates, setTemplates] = React.useState<TaskTemplate[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [templateInputValue, setTemplateInputValue] = React.useState("");
@@ -433,18 +435,18 @@ export function TaskTemplateControls({
     if (selectedTemplateID === id) onSelectedTemplateIDChange(null);
   };
 
-  let pickerPlaceholder = loading ? "Loading templates" : "No task templates yet";
-  if (!loading && templates.length > 0) pickerPlaceholder = "Search and select a task template";
+  let pickerPlaceholder = loading ? t("template.loading") : t("template.empty");
+  if (!loading && templates.length > 0) pickerPlaceholder = t("template.selectPlaceholder");
 
   return (
     <>
       <Field>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <FieldLabel htmlFor="task-template-picker">Task template</FieldLabel>
+          <FieldLabel htmlFor="task-template-picker">{t("template.label")}</FieldLabel>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => openManager(null)}>
               <Settings2Icon data-icon="inline-start" />
-              Manage templates
+              {t("template.manageBtn")}
             </Button>
             <Button
               type="button"

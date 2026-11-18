@@ -16,6 +16,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { FindingRetest } from "@/lib/types";
 
 const statusLabels = {
@@ -42,6 +43,7 @@ export function FindingRetestPanel({
   readOnly?: boolean;
   onCompleted?: () => void;
 }) {
+  const { t } = useI18n();
   const [items, setItems] = React.useState<FindingRetest[] | null>(null);
   const [error, setError] = React.useState("");
   const [open, setOpen] = React.useState(false);
@@ -84,21 +86,21 @@ export function FindingRetestPanel({
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1.5">
-          <CardTitle>Vulnerability retest</CardTitle>
-          <CardDescription>Verifies the current state in a separate session, keeping each retest's verdict and evidence.</CardDescription>
+          <CardTitle>{t("retest.title")}</CardTitle>
+          <CardDescription>{t("retest.desc")}</CardDescription>
         </div>
         {running?.conversation_id != null ? (
           <Button asChild variant="outline" size="sm">
             <Link href={`/chat?c=${running.conversation_id}`} title="View the running retest session">
               <Spinner data-icon="inline-start" aria-hidden="true" />
-              Retesting
+              {t("retest.retesting")}
             </Link>
           </Button>
         ) : null}
         {!running && !readOnly ? (
           <Button size="sm" onClick={() => setOpen(true)} disabled={items === null || !!error}>
             <RotateCcwIcon data-icon="inline-start" />
-            Start retest
+            {t("retest.startBtn")}
           </Button>
         ) : null}
       </CardHeader>

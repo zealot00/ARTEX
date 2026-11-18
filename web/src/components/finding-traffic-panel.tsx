@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { FindingTraffic, FindingTrafficBinding, TrafficEvidenceRole } from "@/lib/types";
 
 const ROLES: Record<TrafficEvidenceRole, string> = {
@@ -45,6 +46,7 @@ export function FindingTrafficPanel({
   readOnly?: boolean;
   onChanged: () => void;
 }) {
+  const { t } = useI18n();
   const [data, setData] = React.useState<FindingTraffic | null>(null);
   const [error, setError] = React.useState("");
   const [adding, setAdding] = React.useState(false);
@@ -99,17 +101,17 @@ export function FindingTrafficPanel({
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>Linked traffic {data ? `(${data.bindings.length})` : ""}</CardTitle>
+            <CardTitle>{t("trafficPanel.title")} {data ? `(${data.bindings.length})` : ""}</CardTitle>
             {!readOnly ? (
               <Button variant="outline" size="sm" disabled={!data || busy} onClick={() => setAdding(true)}>
                 <PlusIcon data-icon="inline-start" />
-                Link traffic
+                {t("trafficPanel.linkBtn")}
               </Button>
             ) : (
-              <Badge variant="outline">Inherited evidence · read-only</Badge>
+              <Badge variant="outline">{t("trafficPanel.readOnlyBadge")}</Badge>
             )}
           </div>
-          <CardDescription>Requests and responses organized in reproduction order. Bound evidence is kept even after raw traffic is purged.</CardDescription>
+          <CardDescription>{t("trafficPanel.desc")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {error ? (
