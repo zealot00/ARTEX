@@ -1643,3 +1643,25 @@ CREATE INDEX IF NOT EXISTS idx_wordlists_kind ON wordlists(kind, name);
 DROP TRIGGER IF EXISTS trg_wordlists_upd ON wordlists;
 CREATE TRIGGER trg_wordlists_upd BEFORE UPDATE ON wordlists
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =====================================================================
+-- Enterprise private PoC template / verification script repository
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS pocs (
+    id               BIGSERIAL PRIMARY KEY,
+    name             TEXT NOT NULL UNIQUE,
+    kind             TEXT NOT NULL CHECK (kind IN ('nuclei_yaml','python_script')),
+    severity         TEXT NOT NULL DEFAULT 'medium' CHECK (severity IN ('info','low','medium','high','critical')),
+    cve              TEXT NOT NULL DEFAULT '',
+    tags             TEXT NOT NULL DEFAULT '',
+    description      TEXT NOT NULL DEFAULT '',
+    content          TEXT NOT NULL,
+    exploit_guidance TEXT NOT NULL DEFAULT '',
+    created_by       TEXT NOT NULL DEFAULT '',
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_pocs_kind ON pocs(kind, name);
+DROP TRIGGER IF EXISTS trg_pocs_upd ON pocs;
+CREATE TRIGGER trg_pocs_upd BEFORE UPDATE ON pocs
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();

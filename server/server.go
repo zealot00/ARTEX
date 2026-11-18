@@ -25,6 +25,7 @@ import (
 	"github.com/Autumn-27/artex/intercept"
 	"github.com/Autumn-27/artex/llmpool"
 	"github.com/Autumn-27/artex/llmrec"
+	"github.com/Autumn-27/artex/oob"
 	"github.com/Autumn-27/artex/report"
 	"github.com/Autumn-27/artex/sessions"
 	"github.com/Autumn-27/artex/traffic"
@@ -50,6 +51,7 @@ type Server struct {
 	jwtKey   []byte            // HS256 signing key loaded from / generated into keyDir/jwt.key
 	wlVault  *wordlists.Vault  // AES-256-GCM encrypted wordlist vault in keyDir/wordlists
 	sessMgr  *sessions.Manager // persistent depth/pivot session manager per task
+	oobMgr   *oob.Tracker      // task-scoped internal OOB HTTP callback tracker
 
 	scrubSecrets bool // drop ARTEX_PG_DSN and the API keys from the environment once read (binary only)
 
@@ -174,7 +176,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			log.Fatalf("[wordlists] vault: %v", err)
 		}
 	}
-	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, jwtKey: key, wlVault: wlVault, sessMgr: sessions.NewManager(), chatBusy: map[string]bool{},
+	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, jwtKey: key, wlVault: wlVault, sessMgr: sessions.NewManager(), oobMgr: oob.NewTracker(), chatBusy: map[string]bool{},
 		chatCancel: map[string]context.CancelCauseFunc{}, triggerQ: map[string][]triggeredRun{},
 		triggerActive: map[string]int{}, triggerCfg: map[string]triggerBehavior{},
 		profChatAgents: map[int64]*agent.ChatAgent{},
@@ -185,7 +187,14 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		o(s)
 	}
 	if s.m != nil && s.sessMgr != nil {
-		s.m.onTaskEnd = func(taskID string) { s.sessMgr.CloseTask(taskID) }
+		s.m.onTaskEnd = func(taskID string) {
+			s.sessMgr.CloseTask(taskID)
+			if s.oobMgr != nil {
+				if tid, err := strconv.ParseInt(taskID, 10, 64); err == nil {
+					s.oobMgr.DeleteTask(tid)
+				}
+			}
+		}
 		s.m.onCloseAll = s.sessMgr.CloseAll
 	}
 	s.initSetupToken()
@@ -721,6 +730,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/wordlists", s.createWordlist)
 	mux.HandleFunc("DELETE /api/wordlists/{id}", s.deleteWordlist)
 
+	mux.HandleFunc("GET /api/pocs", s.listPocs)
+	mux.HandleFunc("POST /api/pocs", s.createPoc)
+	mux.HandleFunc("DELETE /api/pocs/{id}", s.deletePoc)
+
+	mux.HandleFunc("/oob/{token}", s.handleOOBCallback)
+	mux.HandleFunc("/oob/{token}/{rest...}", s.handleOOBCallback)
+
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/stats", s.stats)
 	mux.HandleFunc("GET /api/logs", s.getLogs)
@@ -750,6 +766,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/tasks/{id}/fence", s.updateTaskFence)
 	mux.HandleFunc("GET /api/tasks/{id}/sessions", s.listTaskSessions)
 	mux.HandleFunc("DELETE /api/tasks/{id}/sessions/{sid}", s.closeTaskSession)
+	mux.HandleFunc("GET /api/tasks/{id}/oob", s.listTaskOOBTokens)
 	mux.HandleFunc("GET /api/tasks/{id}/lessons", s.taskLessons)
 	mux.HandleFunc("POST /api/tasks/{id}/lessons/extract", s.extractTaskLessons)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTaskMetadata)

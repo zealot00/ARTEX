@@ -55,6 +55,7 @@ RUN ARTEX_SKIP_FRONTEND=1 \
 FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS tools
 ARG TARGETARCH
 ARG NUCLEI_VERSION=v3.11.1
+ARG NUCLEI_TEMPLATES_VERSION=v10.1.3
 ARG HTTPX_VERSION=v1.12.0
 ARG SUBFINDER_VERSION=v2.17.0
 ARG KATANA_VERSION=v1.8.0
@@ -115,7 +116,11 @@ RUN set -eux; \
     git clone --quiet --depth 1 --branch "$SQLMAP_VERSION" https://github.com/sqlmapproject/sqlmap /opt/sqlmap; \
     commit="$(git -C /opt/sqlmap rev-parse HEAD)"; \
     if [ "$commit" != "$SQLMAP_COMMIT" ]; then echo "sqlmap commit mismatch: want $SQLMAP_COMMIT got $commit" >&2; exit 1; fi; \
-    rm -rf /opt/sqlmap/.git
+    rm -rf /opt/sqlmap/.git; \
+    curl -fsSL "https://github.com/projectdiscovery/nuclei-templates/archive/refs/tags/${NUCLEI_TEMPLATES_VERSION}.tar.gz" -o /tmp/nt.tar.gz; \
+    mkdir -p /opt/nuclei-templates; \
+    tar -xzf /tmp/nt.tar.gz -C /opt/nuclei-templates --strip-components=1; \
+    rm -rf /tmp/nt.tar.gz /opt/nuclei-templates/.git /opt/nuclei-templates/.github
 
 # ---------------------------------------------------------------- runtime ---
 FROM python:3.12-slim-bookworm
@@ -149,11 +154,15 @@ RUN set -eux; \
     tar -xJf "/tmp/$asset" -C /usr/local --strip-components=1 --no-same-owner; \
     rm -f "/tmp/$asset" /tmp/SHASUMS256.txt; \
     node --version; npm --version
-# Pinned, checksum-verified recon binaries and the sqlmap checkout from the tools stage.
+# Pinned, checksum-verified recon binaries, sqlmap, and offline nuclei-templates from the tools stage.
 COPY --from=tools /out/ /usr/local/bin/
 COPY --from=tools /opt/sqlmap /opt/sqlmap
+COPY --from=tools /opt/nuclei-templates /opt/nuclei-templates
+ENV NUCLEI_TEMPLATES_DIR=/opt/nuclei-templates \
+    ARTEX_NUCLEI_TEMPLATES_DIR=/opt/nuclei-templates
 RUN set -eux; \
     ln -s /opt/sqlmap/sqlmap.py /usr/local/bin/sqlmap; \
+    ln -sfn /opt/nuclei-templates /root/nuclei-templates; \
     nuclei -version >/dev/null; httpx -version; subfinder -version; katana -version; \
     ffuf -V >/dev/null; dalfox --version >/dev/null; sqlmap --version >/dev/null
 
