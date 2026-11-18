@@ -88,4 +88,21 @@ func TestSearchPocsOfflineTemplatesAndFence(t *testing.T) {
 	if !resTrav.IsError {
 		t.Fatalf("expected path traversal rejection, got: %+v", resTrav)
 	}
+
+	// Inline custom python_script PoC execution under fence + OOB env injection.
+	inlinePayload, _ := json.Marshal(map[string]any{
+		"task_id":        "99",
+		"target":         "http://10.10.1.5:8080",
+		"inline_kind":    "python_script",
+		"oob_token":      "tok123",
+		"inline_content": "import os\nprint(os.environ.get('ARTEX_POC_TARGET'), os.environ.get('ARTEX_OOB_TOKEN'))\n",
+	})
+	resInline, err := runTool.Call(context.Background(), inlinePayload, nil)
+	if err != nil || resInline.IsError {
+		t.Fatalf("run_poc inline python_script failed: err=%v res=%+v", err, resInline)
+	}
+	txt := resultText(resInline)
+	if !strings.Contains(txt, "http://10.10.1.5:8080 tok123") || !strings.Contains(txt, `"matched":true`) {
+		t.Fatalf("unexpected inline PoC output: %s", txt)
+	}
 }
