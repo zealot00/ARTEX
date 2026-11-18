@@ -32,6 +32,8 @@ AI 自主渗透测试与企业内网横向防御演练平台（Go 后端 + Next.
   - 保留非破坏性二次利用能力（[skills/poc-verify-exploit](skills/poc-verify-exploit/SKILL.md)）：立足点确认、凭据沉淀至 `task_credentials`、配合持久化深度会话衔接验证。
 - **加密且模型盲态的字典保险库**：通过 `/system/settings` 或 Admin API（`/api/wordlists`）上传字典，使用 AES-256-GCM 加密存储于 `<keyDir>/wordlists/`（不进入 PostgreSQL、工作区及 LLM 上下文），支持 `run_credential_audit`（`hydra`）与防锁定低频密码喷洒 `run_password_spray`（`nxc`，单轮上限 1–3 个密码）。
 - **持久化深度会话与多跳穿透**：通过 `depth_session_open` / `exec` / `list` / `close` 管理任务级 `pty`、`ssh`（支持 `jump_session_id` 多跳级联、内置 `127.0.0.1` SOCKS5 代理与服务端凭据解析）和 `tunnel` 进程，任务结束或删除时自动清理。
+- **高强度业务逻辑与代理鉴权增强**：内置双账号/无账号越权对比工具 `authz_replay`、同步并发条件竞争探测工具 `race_probe`（`prod_safe_mode` 下限流 5 并发）、[skills/biz-logic-audit](skills/biz-logic-audit/SKILL.md) 逻辑跳步/敏感字段泄漏审计剧本，以及按 Host 严格隔离的代理鉴权头自动注入（`/api/tasks/{id}/proxy-headers`）。
+- **任务外联审计与报告自证**：自动记录任务执行期间的外部网络外联（`task_outbound_logs`、`GET /api/tasks/{id}/outbound`），并自动写入标准渗透报告与等保 2.0 报告，便于上层流量监控溯源核查。
 - **电子围栏与立足点门控**：支持 CIDR / IP / 域名 / 通配符 / URL 前缀 Fail-Closed 拦截（含 `30x` 跳转校验），以及 `wait_for_task_id` 零消耗休眠挂起、`POST /api/tasks/{id}/lateral/approve` 原地审批恢复横向移动。
 - **等保 2.0 合规检查矩阵**：内置 12 域 `task_checks`（含 `AD-DIR`、`WIN-SVC`），支持阳性漏洞与阴性“已通过”证据记录及 Markdown 报告导出（`GET /api/tasks/{id}/report/mlps`）。
 - **工单 API 与 100% 中英双语 UI**：支持 Scoped Machine Key（`artex_ak_`）、`Idempotency-Key` 幂等任务创建与聚合轮询；Web 控制台支持 `zh-CN` / `en` 一键切换，并在 `/system/settings` 与 `/function/tasks/detail`（`Depth & Fence` 标签页）提供可视化管理。

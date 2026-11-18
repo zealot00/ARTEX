@@ -65,8 +65,8 @@ docker compose up -d --build
 - **中英双语切换**：顶部导航栏右侧提供 `zh-CN` / `en` 语言切换开关，切换后实时生效并持久化到本地浏览器存储（覆盖全部 77 个前端模块，支持纯静态导出部署）。
 - **核心功能入口**：
   - **仪表盘与任务列表**（`/function/tasks`）：创建任务、查看资产覆盖、启停或删除任务。
-  - **任务详情页**（`/function/tasks/detail`）：查看执行会话、探索图（Exploration Graph）、漏洞发现（Findings）、资产图（Assets）、录制流量（Traffic）、人工对话（Chat）以及 **`Depth & Fence`（深度控制与围栏）** 标签页。
-  - **系统设置**（`/system/settings`）：配置并发数、**加密字典库（Encrypted Wordlists）**、API Keys、通知与审批策略。
+  - **任务详情页**（`/function/tasks/detail`）：查看执行会话、探索图（Exploration Graph）、漏洞发现（Findings）、资产图（Assets）、录制流量（Traffic）、人工对话（Chat）以及 **`Depth & Fence`（深度控制与围栏）** 标签页（包含电子围栏、立足点审批、持久化会话、**代理鉴权头注入**、**任务外联审计记录**及等保合规清单）。
+  - **系统设置**（`/system/settings`）：配置并发数、**加密字典库（Encrypted Wordlists）**、**企业私有 PoC 仓库（Private PoCs）**、API Keys、通知与审批策略。
 
 ---
 
@@ -141,6 +141,13 @@ docker compose up -d --build
 2. 将发现的 SSH/DB/服务口令沉淀到任务凭据库 `task_credentials`。
 3. 必要时调用 `depth_session_open` 建立持久化 `pty`/`ssh` 会话或 SOCKS5 隧道；如开启了 `lateral_gate`，系统会在立足点确认后自动暂停，等待人工审批后继续横向验证。
 4. 最终通过 `traffic_search` -> `traffic_get` 核对真实录包并绑定 `traffic_refs` 提交漏洞报告，严禁凭版本猜测直接上报。
+
+### 5.4 业务逻辑越权、竞态探测与代理鉴权头注入
+
+- **双账号 / 无账号越权对比（`authz_replay`）**：Agent 对业务接口自动重放基准高权、剥离认证头（未授权）、低权限凭据及路径/代理头绕过变体（禁止自动跟随跨边界重定向），直接判定越权风险。
+- **并发条件竞争探测（`race_probe`）**：通过同步屏障释放并发请求，验证审批/额度/优惠券/状态机竞态，`prod_safe_mode` 下自动收紧至 5 并发。
+- **按 Host 隔离的代理鉴权头注入**：在任务详情页 `Depth & Fence` -> **代理鉴权头自动注入** 中为指定内网 Host（如 `portal.corp.local`）配置测试 `Cookie` / `Authorization`；系统禁止通配符 `*` 及出围栏域名，读取自动脱敏，任务结束自动清除。
+- **任务外联审计留痕**：任务执行期间的外部域名/公网 IP 外联会自动记录到 `task_outbound_logs`，可在 `Depth & Fence` 页面实时查看，并自动写入标准报告与等保 2.0 报告第 5 节，供上层流量监控核查自证。
 
 ---
 
