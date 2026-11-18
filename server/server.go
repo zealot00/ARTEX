@@ -210,6 +210,9 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 					s.oobMgr.DeleteTask(tid)
 				}
 			}
+			if s.m.traffic != nil {
+				s.m.traffic.SetTaskHostHeaderRules(taskID, nil)
+			}
 		}
 		s.m.onCloseAll = s.sessMgr.CloseAll
 	}
@@ -785,6 +788,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/tasks/{id}/sessions/{sid}", s.closeTaskSession)
 	mux.HandleFunc("GET /api/tasks/{id}/oob", s.listTaskOOBTokens)
 	mux.HandleFunc("GET /api/tasks/{id}/outbound", s.listTaskOutbound)
+	mux.HandleFunc("GET /api/tasks/{id}/proxy-headers", s.getTaskProxyHeaders)
+	mux.HandleFunc("PUT /api/tasks/{id}/proxy-headers", s.updateTaskProxyHeaders)
 	mux.HandleFunc("GET /api/tasks/{id}/lessons", s.taskLessons)
 	mux.HandleFunc("POST /api/tasks/{id}/lessons/extract", s.extractTaskLessons)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTaskMetadata)

