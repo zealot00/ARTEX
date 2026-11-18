@@ -23,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { formatRulesText, formatSessionEndpoint, parseLineEntries, summarizeChecksProgress } from "@/lib/depth-ops";
 import { useI18n } from "@/lib/i18n/provider";
-import type { DepthSessionInfo, OutboundLog, Task, TaskCheckRow } from "@/lib/types";
+import type { DepthSessionInfo, OutboundLog, ProxyHeaderRule, Task, TaskCheckRow } from "@/lib/types";
 
 export function DepthOpsTab({
   taskId,
@@ -48,6 +48,13 @@ export function DepthOpsTab({
   const [outboundLogs, setOutboundLogs] = React.useState<OutboundLog[]>([]);
   const [loadingOutbound, setLoadingOutbound] = React.useState(true);
 
+  const [proxyRules, setProxyRules] = React.useState<ProxyHeaderRule[]>([]);
+  const [proxyHost, setProxyHost] = React.useState("");
+  const [proxyHeaderName, setProxyHeaderName] = React.useState("Authorization");
+  const [proxyHeaderValue, setProxyHeaderValue] = React.useState("");
+  const [proxyOverwrite, setProxyOverwrite] = React.useState(true);
+  const [savingProxyHeaders, setSavingProxyHeaders] = React.useState(false);
+
   const [lateralNote, setLateralNote] = React.useState("");
   const [approvingLateral, setApprovingLateral] = React.useState(false);
 
@@ -56,11 +63,12 @@ export function DepthOpsTab({
     setLoadingChecks(true);
     setLoadingOutbound(true);
     try {
-      const [fenceCfg, sessList, checksRes, outList] = await Promise.all([
+      const [fenceCfg, sessList, checksRes, outList, phRules] = await Promise.all([
         api.taskFence(taskId).catch(() => null),
         api.taskDepthSessions(taskId).catch(() => []),
         api.taskChecks(taskId).catch(() => ({ checks: [], summary: null })),
         api.taskOutboundLogs(taskId).catch(() => []),
+        api.taskProxyHeaders(taskId).catch(() => []),
       ]);
       if (fenceCfg) {
         setFenceEnabled(fenceCfg.fence_enabled);
@@ -69,6 +77,7 @@ export function DepthOpsTab({
       setSessions(sessList);
       setChecks(checksRes.checks ?? []);
       setOutboundLogs(outList);
+      setProxyRules(phRules);
     } finally {
       setLoadingSessions(false);
       setLoadingChecks(false);
@@ -117,6 +126,41 @@ export function DepthOpsTab({
       await loadAll();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to close session");
+    }
+  };
+
+  const handleSaveProxyHeader = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!proxyHost.trim() || !proxyHeaderName.trim() || !proxyHeaderValue.trim()) return;
+    setSavingProxyHeaders(true);
+    try {
+      await api.updateTaskProxyHeaders(taskId, [
+        {
+          host: proxyHost.trim(),
+          headers: { [proxyHeaderName.trim()]: proxyHeaderValue },
+          overwrite: proxyOverwrite,
+        },
+      ]);
+      toast.success(t("depth.proxyHeaders.savedToast"));
+      setProxyHeaderValue("");
+      await loadAll();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save proxy header rule");
+    } finally {
+      setSavingProxyHeaders(false);
+    }
+  };
+
+  const handleClearProxyHeaders = async () => {
+    setSavingProxyHeaders(true);
+    try {
+      await api.updateTaskProxyHeaders(taskId, []);
+      toast.success(t("depth.proxyHeaders.clearedToast"));
+      await loadAll();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to clear proxy header rules");
+    } finally {
+      setSavingProxyHeaders(false);
     }
   };
 
@@ -299,6 +343,82 @@ export function DepthOpsTab({
           )}
         </CardContent>
       </Card>
+      {/* Host-Scoped Proxy Auth Header Injection */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-base">{t("depth.proxyHeaders.title")}</CardTitle>
+            <CardDescription>{t("depth.proxyHeaders.desc")}</CardDescription>
+          </div>
+          {proxyRules.length > 0 && (
+            <Button size="sm" variant="outline" onClick={() => void handleClearProxyHeaders()} disabled={savingProxyHeaders}>
+              {t("depth.proxyHeaders.clearBtn")}
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form onSubmit={handleSaveProxyHeader} className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1">
+              <Label className="text-xs">{t("depth.proxyHeaders.hostLabel")}</Label>
+              <Input
+                value={proxyHost}
+                onChange={(e) => setProxyHost(e.target.value)}
+                placeholder={t("depth.proxyHeaders.hostPlaceholder")}
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">{t("depth.proxyHeaders.headerNameLabel")}</Label>
+              <Input
+                value={proxyHeaderName}
+                onChange={(e) => setProxyHeaderName(e.target.value)}
+                placeholder="Authorization / Cookie"
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">{t("depth.proxyHeaders.headerValueLabel")}</Label>
+              <Input
+                type="password"
+                value={proxyHeaderValue}
+                onChange={(e) => setProxyHeaderValue(e.target.value)}
+                placeholder="Bearer ... / sid=..."
+                required
+              />
+            </div>
+            <div className="flex items-center gap-2 sm:col-span-2">
+              <Switch checked={proxyOverwrite} onCheckedChange={setProxyOverwrite} />
+              <Label className="text-xs">{t("depth.proxyHeaders.overwriteLabel")}</Label>
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" size="sm" disabled={savingProxyHeaders}>
+                {savingProxyHeaders ? t("common.saving") : t("depth.proxyHeaders.saveBtn")}
+              </Button>
+            </div>
+          </form>
+
+          {proxyRules.length === 0 ? (
+            <p className="text-xs text-muted-foreground">{t("depth.proxyHeaders.empty")}</p>
+          ) : (
+            <div className="space-y-2">
+              {proxyRules.map((r, idx) => (
+                <div key={`${r.host}-${idx}`} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono font-semibold">{r.host}</span>
+                    <Badge variant="outline">{r.overwrite ? "overwrite" : "default-if-empty"}</Badge>
+                    {Object.entries(r.headers).map(([hk, hv]) => (
+                      <Badge key={hk} variant="secondary" className="font-mono">
+                        {hk}: {hv}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Outbound / External Connections Audit */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">

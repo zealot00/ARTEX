@@ -48,6 +48,7 @@ import type {
   PocKind,
   PocRecord,
   PocSeverity,
+  ProxyHeaderRule,
   TaskCheckRow,
   TaskChecksSummary,
   TaskFenceConfig,
@@ -1357,6 +1358,10 @@ export const api = {
     get<{ checks: TaskCheckRow[]; summary: TaskChecksSummary }>(`/tasks/${taskId}/checks`),
   taskOutboundLogs: (taskId: string) =>
     get<{ outbound: OutboundLog[] }>(`/tasks/${taskId}/outbound`).then((r) => arr(r.outbound)),
+  taskProxyHeaders: (taskId: string) =>
+    get<{ rules: ProxyHeaderRule[] }>(`/tasks/${taskId}/proxy-headers`).then((r) => arr(r.rules)),
+  updateTaskProxyHeaders: (taskId: string, rules: ProxyHeaderRule[]) =>
+    put<{ updated: boolean; rule_count: number }>(`/tasks/${taskId}/proxy-headers`, { rules }),
 
   // ---- enterprise private PoCs (admin JWT only) ----
   pocs: (query?: string, kind?: string) => {

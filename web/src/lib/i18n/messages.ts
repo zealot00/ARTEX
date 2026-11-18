@@ -396,6 +396,20 @@ export const enMessages = {
   "depth.outbound.desc": "External hosts reached during this task (excluding loopback, private RFC1918, and declared scope targets) — also exported in reports.",
   "depth.outbound.empty": "No external outbound connections recorded for this task.",
 
+  // Proxy auth header injection
+  "depth.proxyHeaders.title": "Host-Scoped Proxy Auth Header Injection",
+  "depth.proxyHeaders.desc": "Inject test Cookie/Authorization headers only for matching in-fence intranet hosts (wildcards forbidden; values are masked on read).",
+  "depth.proxyHeaders.hostLabel": "Target Host",
+  "depth.proxyHeaders.hostPlaceholder": "e.g. portal.corp.local",
+  "depth.proxyHeaders.headerNameLabel": "Header Name",
+  "depth.proxyHeaders.headerValueLabel": "Header Value",
+  "depth.proxyHeaders.overwriteLabel": "Overwrite existing header",
+  "depth.proxyHeaders.saveBtn": "Apply Rule",
+  "depth.proxyHeaders.clearBtn": "Clear All",
+  "depth.proxyHeaders.savedToast": "Proxy auth header rule applied",
+  "depth.proxyHeaders.clearedToast": "Cleared proxy auth header rules",
+  "depth.proxyHeaders.empty": "No active proxy auth header rules for this task.",
+
   // Enterprise private PoCs
   "pocs.title": "Enterprise Private PoC Repository",
   "pocs.desc": "Manage internal Nuclei YAML templates and Python verification scripts for search_pocs / run_poc (admin JWT only).",
@@ -813,6 +827,20 @@ export const zhCNMessages: Record<TranslationKey, string> = {
   "depth.outbound.title": "任务外联审计记录 ({count})",
   "depth.outbound.desc": "记录任务执行期间访问的外部公网/非目标地址（已自动排除回环、内网私有 IP 与授权目标），并同步写入报告用于上层流量核查。",
   "depth.outbound.empty": "当前任务暂无外部外联记录。",
+
+  // Proxy auth header injection
+  "depth.proxyHeaders.title": "代理鉴权头自动注入（按 Host 严格隔离）",
+  "depth.proxyHeaders.desc": "仅为匹配围栏内指定内网 Host 的代理请求注入测试 Cookie / Authorization（禁止通配符以防凭据外泄，读取时自动脱敏）。",
+  "depth.proxyHeaders.hostLabel": "目标 Host",
+  "depth.proxyHeaders.hostPlaceholder": "例如：portal.corp.local",
+  "depth.proxyHeaders.headerNameLabel": "Header 名称",
+  "depth.proxyHeaders.headerValueLabel": "Header 值",
+  "depth.proxyHeaders.overwriteLabel": "覆盖请求中已有同名 Header",
+  "depth.proxyHeaders.saveBtn": "应用规则",
+  "depth.proxyHeaders.clearBtn": "清空全部",
+  "depth.proxyHeaders.savedToast": "已应用代理鉴权头注入规则",
+  "depth.proxyHeaders.clearedToast": "已清空代理鉴权头规则",
+  "depth.proxyHeaders.empty": "当前任务暂未配置代理鉴权头注入规则。",
 
   // Enterprise private PoCs
   "pocs.title": "企业私有 PoC 仓库",

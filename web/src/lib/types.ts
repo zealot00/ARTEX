@@ -1696,6 +1696,13 @@ export interface OutboundLog {
   hit_count: number;
 }
 
+export interface ProxyHeaderRule {
+  task_id?: string;
+  host: string;
+  headers: Record<string, string>;
+  overwrite: boolean;
+}
+
 export interface TaskCheckRow {
   id: number;
   task_id: number;
