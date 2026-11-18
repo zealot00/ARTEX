@@ -5,6 +5,7 @@ import * as React from "react";
 import { SearchIcon } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
+import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
 // ── DSL autocomplete ──────────────────────────────────────────────────────────
@@ -276,6 +277,7 @@ export function AssetDslSearch({
   error: string;
   count?: number;
 }) {
+  const { t } = useI18n();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [suggestions, setSuggestions] = React.useState<DslSuggestion[]>([]);
   const [selIdx, setSelIdx] = React.useState(0);
@@ -341,7 +343,7 @@ export function AssetDslSearch({
         <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           ref={inputRef}
-          placeholder="DSL search: domain=example AND status_code>=400"
+          placeholder={t("assetDsl.placeholder")}
           value={query}
           onChange={handleChange}
           onKeyDown={handleKeyDown}

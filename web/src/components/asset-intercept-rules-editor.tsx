@@ -7,6 +7,7 @@ import { PlusIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { useI18n } from "@/lib/i18n/provider";
 import type { AssetInterceptKind, AssetInterceptRuleInput } from "@/lib/types";
 
 // Uses NativeSelect (a native <select>) instead of shadcn Select: this editor is used inside a Sheet drawer,
@@ -34,6 +35,7 @@ export function AssetInterceptRulesEditor({
   value: AssetInterceptRuleInput[];
   onChange: (v: AssetInterceptRuleInput[]) => void;
 }) {
+  const { t } = useI18n();
   function update(i: number, patch: Partial<AssetInterceptRuleInput>) {
     onChange(value.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
@@ -56,8 +58,8 @@ export function AssetInterceptRulesEditor({
               value={r.action}
               onChange={(e) => update(i, { action: e.target.value as "block" | "allow" })}
             >
-              <NativeSelectOption value="block">Block</NativeSelectOption>
-              <NativeSelectOption value="allow">Allow</NativeSelectOption>
+              <NativeSelectOption value="block">{t("interceptEditor.block")}</NativeSelectOption>
+              <NativeSelectOption value="allow">{t("interceptEditor.allow")}</NativeSelectOption>
             </NativeSelect>
             <NativeSelect
               size="sm"
@@ -79,7 +81,7 @@ export function AssetInterceptRulesEditor({
             />
             <Input
               className="w-[120px] shrink-0"
-              placeholder="Note (optional)"
+              placeholder={t("interceptEditor.notePlaceholder")}
               value={r.note}
               onChange={(e) => update(i, { note: e.target.value })}
             />

@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { FindingTrafficBinding, TrafficResp } from "@/lib/types";
 
 const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
@@ -39,6 +40,7 @@ export function TrafficPickerDialog({
   onClose: () => void;
   onBound: () => void;
 }) {
+  const { t } = useI18n();
   const [host, setHost] = React.useState("");
   const [method, setMethod] = React.useState("all");
   const [query, setQuery] = React.useState("");
@@ -112,18 +114,18 @@ export function TrafficPickerDialog({
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
           <DialogHeader>
-            <DialogTitle>Bind traffic</DialogTitle>
+            <DialogTitle>{t("trafficPicker.title")}</DialogTitle>
             <DialogDescription>
               Filter and multi-select requests/responses; selections persist across pages. After binding you can set purpose, notes, and order.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className="flex flex-col gap-3 sm:flex-row">
             <Field>
-              <FieldLabel htmlFor="evidence-host">Target host</FieldLabel>
+              <FieldLabel htmlFor="evidence-host">{t("trafficPicker.hostLabel")}</FieldLabel>
               <Input
                 id="evidence-host"
                 value={host}
-                placeholder="Domain or IP"
+                placeholder={t("trafficPicker.hostPlaceholder")}
                 onChange={(e) => {
                   setHost(e.target.value);
                   setPage(0);

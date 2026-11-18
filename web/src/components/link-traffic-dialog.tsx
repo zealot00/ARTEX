@@ -17,6 +17,7 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { Finding, FindingsPage } from "@/lib/types";
 
 export function LinkTrafficDialog({
@@ -28,6 +29,7 @@ export function LinkTrafficDialog({
   onClose: () => void;
   onBound: () => void;
 }) {
+  const { t } = useI18n();
   const [query, setQuery] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [data, setData] = React.useState<FindingsPage | null>(null);
@@ -84,15 +86,15 @@ export function LinkTrafficDialog({
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Link to vulnerability</DialogTitle>
-          <DialogDescription>Save the {trafficIds.length} selected traffic records as evidence of an existing vulnerability.</DialogDescription>
+          <DialogTitle>{t("linkTraffic.title")}</DialogTitle>
+          <DialogDescription>{t("linkTraffic.desc", { count: trafficIds.length })}</DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="link-finding-query">Find vulnerability</FieldLabel>
+            <FieldLabel htmlFor="link-finding-query">{t("linkTraffic.findLabel")}</FieldLabel>
             <Input
               id="link-finding-query"
-              placeholder="Name / summary / vulnerability class"
+              placeholder={t("linkTraffic.findPlaceholder")}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);

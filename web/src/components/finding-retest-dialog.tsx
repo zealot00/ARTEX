@@ -18,6 +18,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { FindingRetest } from "@/lib/types";
 
 interface FindingRetestDialogProps {
@@ -29,6 +30,7 @@ interface FindingRetestDialogProps {
 
 // Mounted only while open; notes cleared on close. The list and detail share the submit lock and error handling; stays on the current page after starting.
 export function FindingRetestDialog({ findingId, findingName, onClose, onStarted }: FindingRetestDialogProps) {
+  const { t } = useI18n();
   const notesId = React.useId();
   const [notes, setNotes] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
@@ -55,7 +57,7 @@ export function FindingRetestDialog({ findingId, findingName, onClose, onStarted
     <Dialog open onOpenChange={(open) => !open && !submitLock.current && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Retest vulnerability #{findingId}</DialogTitle>
+          <DialogTitle>{t("retestDialog.title", { id: findingId })}</DialogTitle>
           <DialogDescription className="break-words">
             {findingName ? <span className="mb-2 block">{findingName}</span> : null}
             Retest Agent
@@ -64,7 +66,7 @@ export function FindingRetestDialog({ findingId, findingName, onClose, onStarted
         </DialogHeader>
         <FieldGroup>
           <Field data-disabled={submitting}>
-            <FieldLabel htmlFor={notesId}>Notes (optional)</FieldLabel>
+            <FieldLabel htmlFor={notesId}>{t("retestDialog.notesLabel")}</FieldLabel>
             <Textarea
               id={notesId}
               value={notes}
@@ -72,18 +74,18 @@ export function FindingRetestDialog({ findingId, findingName, onClose, onStarted
               rows={4}
               disabled={submitting}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. verify the original endpoint with the original test account; fix version is v2."
+              placeholder={t("retestDialog.notesPlaceholder")}
             />
             <FieldDescription>Add the fix version, test conditions, or limitations of this run.</FieldDescription>
           </Field>
         </FieldGroup>
         <DialogFooter>
           <Button variant="outline" disabled={submitting} onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button disabled={submitting} onClick={() => void start()}>
             {submitting ? <Spinner data-icon="inline-start" /> : <RotateCcwIcon data-icon="inline-start" />}
-            {submitting ? "Creating…" : "Start retest"}
+            {submitting ? t("retestDialog.creating") : t("retest.startBtn")}
           </Button>
         </DialogFooter>
       </DialogContent>

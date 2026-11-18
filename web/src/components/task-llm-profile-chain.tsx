@@ -18,6 +18,7 @@ import {
   ComboboxValue,
 } from "@/components/ui/combobox";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useI18n } from "@/lib/i18n/provider";
 import type { LLMProfile } from "@/lib/types";
 
 interface TaskLLMProfileChainProps {
@@ -53,6 +54,7 @@ export function TaskLLMProfileChain({
   inputId,
   portalContainer,
 }: TaskLLMProfileChainProps) {
+  const { t } = useI18n();
   const profilesByID = React.useMemo(() => new Map(profiles.map((profile) => [profile.id, profile])), [profiles]);
   const itemIDs = React.useMemo(() => profiles.map((profile) => profile.id), [profiles]);
   const profilesUnavailable = profiles.length === 0;
@@ -108,12 +110,12 @@ export function TaskLLMProfileChain({
           </ComboboxValue>
           <ComboboxChipsInput
             id={inputId}
-            placeholder={profiles.length > 0 ? "Search and add LLM profiles" : "No LLM profiles available"}
+            placeholder={profiles.length > 0 ? t("llmChain.searchPlaceholder") : t("llmChain.emptyProfiles")}
             disabled={disabled ? true : profilesUnavailable}
           />
         </ComboboxChips>
         <ComboboxContent portalContainer={portalContainer}>
-          <ComboboxEmpty>No matching LLM profiles</ComboboxEmpty>
+          <ComboboxEmpty>{t("llmChain.noMatch")}</ComboboxEmpty>
           <ComboboxList>
             {(id) => {
               const profile = profilesByID.get(id);

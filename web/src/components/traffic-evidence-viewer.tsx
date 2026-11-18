@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import type { FindingTrafficDetail, TrafficDetail } from "@/lib/types";
 
 export function TrafficEvidenceViewer({
@@ -24,6 +25,7 @@ export function TrafficEvidenceViewer({
   contextTask?: string;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [detail, setDetail] = React.useState<FindingTrafficDetail | null>(null);
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -71,7 +73,7 @@ export function TrafficEvidenceViewer({
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Traffic evidence #{bindingId}</DialogTitle>
+          <DialogTitle>{t("trafficViewer.evidenceTitle", { id: String(bindingId ?? "") })}</DialogTitle>
           <DialogDescription className="break-all">
             {detail?.binding.snapshot.url ?? "View the request and response saved at binding time"}
           </DialogDescription>
@@ -124,6 +126,7 @@ export function TrafficEvidenceViewer({
 }
 
 export function CapturedTrafficViewer({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const { t } = useI18n();
   const [detail, setDetail] = React.useState<TrafficDetail | null>(null);
   const [error, setError] = React.useState("");
   React.useEffect(() => {
@@ -152,7 +155,7 @@ export function CapturedTrafficViewer({ id, onClose }: { id: string | null; onCl
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Traffic preview</DialogTitle>
+          <DialogTitle>{t("trafficViewer.previewTitle")}</DialogTitle>
           <DialogDescription>Traffic ID: {id}. The full body is saved when binding.</DialogDescription>
         </DialogHeader>
         {error ? (

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import type { ParsedCompanyScopeText } from "@/lib/company-scope";
+import { useI18n } from "@/lib/i18n/provider";
 import type { CompanyScopeKind } from "@/lib/types";
 
 const SCOPE_KIND_LABELS: Record<CompanyScopeKind, string> = {
@@ -21,8 +22,8 @@ export function ScopeTextEditor({
   value,
   onValueChange,
   parsed,
-  label = "Asset scope",
-  description = "One per line; domains, IPs, CIDRs, ICP filings, and company keywords are recognized automatically.",
+  label,
+  description,
 }: {
   id: string;
   value: string;
@@ -31,6 +32,9 @@ export function ScopeTextEditor({
   label?: string;
   description?: string;
 }) {
+  const { t } = useI18n();
+  const resolvedLabel = label ?? t("scopeEditor.defaultLabel");
+  const resolvedDesc = description ?? t("scopeEditor.defaultDesc");
   const counts = React.useMemo(() => {
     const result = new Map<CompanyScopeKind, number>();
     for (const rule of parsed.rules) result.set(rule.kind, (result.get(rule.kind) ?? 0) + 1);
@@ -39,8 +43,8 @@ export function ScopeTextEditor({
 
   return (
     <Field data-invalid={parsed.errors.length > 0}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <FieldDescription>{description}</FieldDescription>
+      <FieldLabel htmlFor={id}>{resolvedLabel}</FieldLabel>
+      <FieldDescription>{resolvedDesc}</FieldDescription>
       <Textarea
         id={id}
         rows={8}
@@ -52,7 +56,7 @@ export function ScopeTextEditor({
       />
       {parsed.rules.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs">
-          <span>{parsed.rules.length} recognized</span>
+          <span>{t("scopeEditor.recognizedCount", { count: parsed.rules.length })}</span>
           {Object.entries(SCOPE_KIND_LABELS).map(([kind, kindLabel]) => {
             const count = counts.get(kind as CompanyScopeKind) ?? 0;
             return count > 0 ? (
