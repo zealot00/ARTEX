@@ -98,9 +98,15 @@ docker compose up -d --build
 
 ## 5. PoC 选择、内网 OOB 盲打与二次利用实战
 
-### 5.1 离线 `nuclei-templates` 与企业私有 PoC 库
+### 5.1 离线 `nuclei-templates`、预置基线与企业私有 PoC 库
 
-- **离线模板**：Docker 镜像已在 `/opt/nuclei-templates` 预置固定版本的官方 `nuclei-templates`（可通过 `ARTEX_NUCLEI_TEMPLATES_DIR` 指定自定义挂载目录），断网内网可直接使用。
+- **离线模板（Docker 与本地运行）**：
+  - Docker 镜像已在 `/opt/nuclei-templates` 预置固定版本的官方 `nuclei-templates`（可通过 `ARTEX_NUCLEI_TEMPLATES_DIR` 指定自定义挂载目录），断网内网可直接使用。
+  - 若在宿主机本地直接编译运行（非 Docker），可执行一键同步脚本拉取官方全量 `nuclei-templates` 到 `./data/nuclei-templates`（`search_pocs` 会自动探测 `/opt/nuclei-templates`、`./data/nuclei-templates` 与 `~/nuclei-templates`）：
+    ```bash
+    ./scripts/sync-nuclei-templates.sh
+    ```
+- **开箱预置与自编沉淀**：系统启动会自动在 `pocs` 表预置 12 项企业内网高频基础检测模板（Spring Actuator、Swagger/OpenAPI、`.env`/`.git`、GraphQL 内省、Nacos、Druid、Prometheus/Grafana、Docker/K8s 未授权、CORS、路径/代理头绕过、SSTI 基线与 Blind SSRF OOB）；若库中无现成模板，Agent 可结合 `skills/poc-verify-exploit/payloads.md` 现场编写并用 `run_poc(inline_kind, inline_content)` 验证，通过后调用 `save_poc` 沉淀进私有库。
 - **上传企业私有 PoC**（仅 Admin JWT 权限，通过 `POST /api/pocs`）：
   ```bash
   curl -X POST http://127.0.0.1:8787/api/pocs \
