@@ -23,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { formatRulesText, formatSessionEndpoint, parseLineEntries, summarizeChecksProgress } from "@/lib/depth-ops";
 import { useI18n } from "@/lib/i18n/provider";
-import type { DepthSessionInfo, Task, TaskCheckRow } from "@/lib/types";
+import type { DepthSessionInfo, OutboundLog, Task, TaskCheckRow } from "@/lib/types";
 
 export function DepthOpsTab({
   taskId,
@@ -45,17 +45,22 @@ export function DepthOpsTab({
   const [checks, setChecks] = React.useState<TaskCheckRow[]>([]);
   const [loadingChecks, setLoadingChecks] = React.useState(true);
 
+  const [outboundLogs, setOutboundLogs] = React.useState<OutboundLog[]>([]);
+  const [loadingOutbound, setLoadingOutbound] = React.useState(true);
+
   const [lateralNote, setLateralNote] = React.useState("");
   const [approvingLateral, setApprovingLateral] = React.useState(false);
 
   const loadAll = React.useCallback(async () => {
     setLoadingSessions(true);
     setLoadingChecks(true);
+    setLoadingOutbound(true);
     try {
-      const [fenceCfg, sessList, checksRes] = await Promise.all([
+      const [fenceCfg, sessList, checksRes, outList] = await Promise.all([
         api.taskFence(taskId).catch(() => null),
         api.taskDepthSessions(taskId).catch(() => []),
         api.taskChecks(taskId).catch(() => ({ checks: [], summary: null })),
+        api.taskOutboundLogs(taskId).catch(() => []),
       ]);
       if (fenceCfg) {
         setFenceEnabled(fenceCfg.fence_enabled);
@@ -63,9 +68,11 @@ export function DepthOpsTab({
       }
       setSessions(sessList);
       setChecks(checksRes.checks ?? []);
+      setOutboundLogs(outList);
     } finally {
       setLoadingSessions(false);
       setLoadingChecks(false);
+      setLoadingOutbound(false);
     }
   }, [taskId]);
 
@@ -286,6 +293,48 @@ export function DepthOpsTab({
                   <p className="mt-1 font-medium">{c.title}</p>
                   <p className="text-muted-foreground">{c.domain}</p>
                   {c.evidence && <p className="mt-1 line-clamp-2 font-mono text-[11px] text-muted-foreground">{c.evidence}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      {/* Outbound / External Connections Audit */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-base">{t("depth.outbound.title", { count: outboundLogs.length })}</CardTitle>
+            <CardDescription>{t("depth.outbound.desc")}</CardDescription>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => void loadAll()} disabled={loadingOutbound}>
+            <RefreshCwIcon className="mr-1.5 size-3.5" />
+            {t("common.refresh")}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {loadingOutbound ? (
+            <p className="text-xs text-muted-foreground">{t("common.loading")}</p>
+          ) : outboundLogs.length === 0 ? (
+            <p className="text-xs text-muted-foreground">{t("depth.outbound.empty")}</p>
+          ) : (
+            <div className="space-y-2">
+              {outboundLogs.map((o) => (
+                <div key={o.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-xs">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-semibold">
+                        {o.target_host}:{o.target_port}
+                      </span>
+                      <Badge variant="outline">{o.protocol}</Badge>
+                      <Badge variant="secondary">{o.source}</Badge>
+                      <Badge variant="secondary">×{o.hit_count}</Badge>
+                    </div>
+                    <p className="font-mono text-[11px] text-muted-foreground">
+                      {o.purpose}
+                      {o.url_preview ? ` • ${o.url_preview}` : ""}
+                    </p>
+                  </div>
+                  <span className="font-mono text-[11px] text-muted-foreground">{o.last_seen}</span>
                 </div>
               ))}
             </div>

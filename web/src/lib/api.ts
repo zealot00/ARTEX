@@ -44,6 +44,10 @@ import type {
   FindingGroupsPage,
   FindingQuery,
   FindingRetest,
+  OutboundLog,
+  PocKind,
+  PocRecord,
+  PocSeverity,
   TaskCheckRow,
   TaskChecksSummary,
   TaskFenceConfig,
@@ -1351,4 +1355,26 @@ export const api = {
     del<{ closed: boolean; session_id: string }>(`/tasks/${taskId}/sessions/${encodeURIComponent(sessionId)}`),
   taskChecks: (taskId: string) =>
     get<{ checks: TaskCheckRow[]; summary: TaskChecksSummary }>(`/tasks/${taskId}/checks`),
+  taskOutboundLogs: (taskId: string) =>
+    get<{ outbound: OutboundLog[] }>(`/tasks/${taskId}/outbound`).then((r) => arr(r.outbound)),
+
+  // ---- enterprise private PoCs (admin JWT only) ----
+  pocs: (query?: string, kind?: string) => {
+    const params = new URLSearchParams();
+    if (query) params.set("query", query);
+    if (kind) params.set("kind", kind);
+    const qs = params.toString();
+    return get<{ pocs: PocRecord[] }>(`/pocs${qs ? `?${qs}` : ""}`).then((r) => arr(r.pocs));
+  },
+  upsertPoc: (input: {
+    name: string;
+    kind: PocKind;
+    severity: PocSeverity;
+    cve?: string;
+    tags?: string;
+    description?: string;
+    exploit_guidance?: string;
+    content: string;
+  }) => post<{ poc: PocRecord; created: boolean }>("/pocs", input),
+  deletePoc: (id: number) => del<{ deleted: boolean; id: number }>(`/pocs/${id}`),
 };

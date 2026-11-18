@@ -390,6 +390,33 @@ export const enMessages = {
   "depth.checks.desc": "Positive findings and negative-evidence verification across MLPS 2.0 / AD / Windows / Network domains.",
   "depth.checks.exportBtn": "Export MLPS Report",
   "depth.checks.empty": "No compliance checklist seeded for this task (set compliance_profile: \"mlps\" at creation).",
+
+  // Outbound audit
+  "depth.outbound.title": "Outbound / External Connections Audit ({count})",
+  "depth.outbound.desc": "External hosts reached during this task (excluding loopback, private RFC1918, and declared scope targets) — also exported in reports.",
+  "depth.outbound.empty": "No external outbound connections recorded for this task.",
+
+  // Enterprise private PoCs
+  "pocs.title": "Enterprise Private PoC Repository",
+  "pocs.desc": "Manage internal Nuclei YAML templates and Python verification scripts for search_pocs / run_poc (admin JWT only).",
+  "pocs.nameLabel": "PoC Name",
+  "pocs.namePlaceholder": "e.g. internal-oa-rce-2026",
+  "pocs.kindLabel": "Kind",
+  "pocs.kindNuclei": "Nuclei YAML",
+  "pocs.kindPython": "Python Script",
+  "pocs.severityLabel": "Severity",
+  "pocs.cveLabel": "CVE / Advisory",
+  "pocs.tagsLabel": "Tags",
+  "pocs.tagsPlaceholder": "e.g. oa,rce,intranet",
+  "pocs.descLabel": "Description",
+  "pocs.guidanceLabel": "Secondary Exploitation Guidance",
+  "pocs.contentLabel": "Template / Script Content",
+  "pocs.saveBtn": "Save PoC",
+  "pocs.savingBtn": "Saving...",
+  "pocs.savedToast": "Saved PoC {name}",
+  "pocs.deletedToast": "Deleted PoC #{id}",
+  "pocs.searchPlaceholder": "Filter PoCs by name, CVE, or tag...",
+  "pocs.empty": "No private PoCs found.",
 } as const;
 
 export type TranslationKey = keyof typeof enMessages;
@@ -781,6 +808,33 @@ export const zhCNMessages: Record<TranslationKey, string> = {
   "depth.checks.desc": "覆盖等保 2.0 / AD 域 / Windows / 网络隔离的正面漏洞与阴性安全证明记录。",
   "depth.checks.exportBtn": "导出等保报告",
   "depth.checks.empty": "当前任务未初始化合规检查清单（创建时需传入 compliance_profile: \"mlps\"）。",
+
+  // Outbound audit
+  "depth.outbound.title": "任务外联审计记录 ({count})",
+  "depth.outbound.desc": "记录任务执行期间访问的外部公网/非目标地址（已自动排除回环、内网私有 IP 与授权目标），并同步写入报告用于上层流量核查。",
+  "depth.outbound.empty": "当前任务暂无外部外联记录。",
+
+  // Enterprise private PoCs
+  "pocs.title": "企业私有 PoC 仓库",
+  "pocs.desc": "管理内部 Nuclei YAML 模板与 Python 验证脚本，供 search_pocs / run_poc 受控调用（仅管理员 JWT 可操作）。",
+  "pocs.nameLabel": "PoC 名称",
+  "pocs.namePlaceholder": "例如：internal-oa-rce-2026",
+  "pocs.kindLabel": "类型",
+  "pocs.kindNuclei": "Nuclei YAML",
+  "pocs.kindPython": "Python 脚本",
+  "pocs.severityLabel": "严重级别",
+  "pocs.cveLabel": "CVE / 内部编号",
+  "pocs.tagsLabel": "标签",
+  "pocs.tagsPlaceholder": "例如：oa,rce,intranet",
+  "pocs.descLabel": "描述",
+  "pocs.guidanceLabel": "二次利用 / 证明指引",
+  "pocs.contentLabel": "模板或脚本正文",
+  "pocs.saveBtn": "保存 PoC",
+  "pocs.savingBtn": "保存中...",
+  "pocs.savedToast": "已保存 PoC {name}",
+  "pocs.deletedToast": "已删除 PoC #{id}",
+  "pocs.searchPlaceholder": "按名称、CVE 或标签筛选...",
+  "pocs.empty": "暂无私有 PoC 记录。",
 };
 
 export const MESSAGES = {

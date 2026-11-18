@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { WordlistsVaultCard } from "@/components/wordlists-vault-card";
+import { PrivatePocsCard } from "@/components/private-pocs-card";
 import { api } from "@/lib/api";
 import { CHAT_SEND_MODE_OPTIONS, type ChatSendMode, setChatSendMode, useChatSendMode } from "@/lib/chat-send-mode";
 import type { Locale } from "@/lib/i18n/core";
@@ -734,6 +735,8 @@ export default function SystemSettingsPage() {
         </Card>
 
         <WordlistsVaultCard />
+
+        <PrivatePocsCard />
       </div>
     </div>
   );

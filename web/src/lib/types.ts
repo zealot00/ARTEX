@@ -1663,6 +1663,39 @@ export interface TaskFenceConfig {
   fence_rules: string[];
 }
 
+export type PocKind = "nuclei_yaml" | "python_script";
+export type PocSeverity = "info" | "low" | "medium" | "high" | "critical";
+
+export interface PocRecord {
+  id: number;
+  name: string;
+  kind: PocKind;
+  severity: PocSeverity;
+  cve: string;
+  tags: string;
+  description: string;
+  content?: string;
+  exploit_guidance?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OutboundLog {
+  id: number;
+  task_id: number;
+  source: string;
+  protocol: string;
+  target_host: string;
+  target_port: number;
+  method: string;
+  url_preview: string;
+  purpose: string;
+  first_seen: string;
+  last_seen: string;
+  hit_count: number;
+}
+
 export interface TaskCheckRow {
   id: number;
   task_id: number;

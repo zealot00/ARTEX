@@ -48,6 +48,7 @@ func (s *Server) hostTools() ([]actool.CoreTool, map[string][]string) {
 	tools = append(tools, s.sessionTools()...)
 	tools = append(tools, s.oobTools()...)
 	tools = append(tools, s.pocTools()...)
+	tools = append(tools, s.bizProbeTools()...)
 	tools = append(tools, s.platformTools()...) // platform operation tools (create/edit skills/tools/MCP, for Auto)
 	custom, err := s.customTools()
 	if err != nil {
@@ -579,6 +580,7 @@ func (s *Server) seedOrchestrationTools() {
 	s.seedSessionTools()
 	s.seedOOBTools()
 	s.seedPocTools()
+	s.seedBizProbeTools()
 	s.seedFindingVerificationSchema() // S1: poe_level / evidence_quotes on update_finding_report, added once per DB
 	s.seedFindingEvidenceSchema()     // optional counterevidence / confidence_rationale on report_finding, added once per DB
 	s.seedFactInputSchema()           // restore record_fact single/batch contracts
