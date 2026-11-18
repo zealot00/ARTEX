@@ -170,6 +170,17 @@ type Traffic struct {
 	// transparent-passthrough paths honor it (go-mitmproxy's getUpstreamConn),
 	// so no host escapes it. Hot-swappable at runtime via SetUpstreamProxy.
 	upstream atomic.Pointer[url.URL]
+	// onOutbound, if set, receives request metadata for external/outbound audit logging.
+	onOutbound atomic.Pointer[func(host string, port int, scheme, method, rawURL string)]
+}
+
+// SetOnOutbound registers a non-blocking callback invoked when proxy requests arrive.
+func (t *Traffic) SetOnOutbound(fn func(host string, port int, scheme, method, rawURL string)) {
+	if fn == nil {
+		t.onOutbound.Store(nil)
+		return
+	}
+	t.onOutbound.Store(&fn)
 }
 
 // Open initializes the traffic tree, blob store and SQLite index under dir.
@@ -387,6 +398,32 @@ func (t *Traffic) DB() *sql.DB { return t.db }
 type sink struct {
 	mproxy.BaseAddon
 	t *Traffic
+}
+
+func (s *sink) Requestheaders(f *mproxy.Flow) {
+	if s.t == nil || f == nil || f.Request == nil || f.Request.URL == nil {
+		return
+	}
+	fnPtr := s.t.onOutbound.Load()
+	if fnPtr == nil || *fnPtr == nil {
+		return
+	}
+	u := f.Request.URL
+	host := u.Hostname()
+	if host == "" {
+		return
+	}
+	port := 0
+	if p := u.Port(); p != "" {
+		if n, err := strconv.Atoi(p); err == nil {
+			port = n
+		}
+	} else if strings.EqualFold(u.Scheme, "https") {
+		port = 443
+	} else if strings.EqualFold(u.Scheme, "http") {
+		port = 80
+	}
+	(*fnPtr)(host, port, u.Scheme, f.Request.Method, u.String())
 }
 
 func (s *sink) Response(f *mproxy.Flow) {

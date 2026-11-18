@@ -14,11 +14,12 @@ import (
 
 // Input bundles what the report needs.
 type Input struct {
-	Title       string
-	Goal        string
-	GeneratedAt time.Time
-	AssetCounts map[string]int
-	Findings    []*db.Node
+	Title        string
+	Goal         string
+	GeneratedAt  time.Time
+	AssetCounts  map[string]int
+	Findings     []*db.Node
+	OutboundLogs []db.OutboundLog
 }
 
 type findingView struct {
@@ -86,6 +87,28 @@ func Markdown(in Input) string {
 				fmt.Fprintf(&b, "**PoC / Evidence:**\n\n```\n%s\n```\n\n", f.PoC)
 			}
 		}
+	}
+
+	fmt.Fprintf(&b, "## Outbound / External Connections Audit\n\n")
+	if len(in.OutboundLogs) == 0 {
+		b.WriteString("_No external outbound connections were recorded during this task._\n\n")
+	} else {
+		b.WriteString("| Target Host | Port | Protocol | Source | Hits | First Seen | Last Seen | Purpose | Sample URL |\n")
+		b.WriteString("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
+		for _, o := range in.OutboundLogs {
+			fmt.Fprintf(&b, "| `%s` | %d | `%s` | `%s` | %d | %s | %s | %s | %s |\n",
+				escapeMDCell(o.TargetHost),
+				o.TargetPort,
+				escapeMDCell(o.Protocol),
+				escapeMDCell(o.Source),
+				o.HitCount,
+				o.FirstSeen.Format("2006-01-02 15:04:05"),
+				o.LastSeen.Format("2006-01-02 15:04:05"),
+				escapeMDCell(nz(o.Purpose, "-")),
+				escapeMDCell(clipRunes(nz(o.URLPreview, "-"), 96)),
+			)
+		}
+		b.WriteString("\n")
 	}
 
 	return b.String()

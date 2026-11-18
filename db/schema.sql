@@ -1665,3 +1665,25 @@ CREATE INDEX IF NOT EXISTS idx_pocs_kind ON pocs(kind, name);
 DROP TRIGGER IF EXISTS trg_pocs_upd ON pocs;
 CREATE TRIGGER trg_pocs_upd BEFORE UPDATE ON pocs
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =====================================================================
+-- Task-scoped outbound / external connection audit ledger
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS task_outbound_logs (
+    id          BIGSERIAL PRIMARY KEY,
+    task_id     BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    source      TEXT NOT NULL DEFAULT 'proxy',
+    protocol    TEXT NOT NULL DEFAULT 'http',
+    target_host TEXT NOT NULL,
+    target_port INTEGER NOT NULL DEFAULT 0,
+    method      TEXT NOT NULL DEFAULT '',
+    url_preview TEXT NOT NULL DEFAULT '',
+    purpose     TEXT NOT NULL DEFAULT '',
+    first_seen  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    hit_count   INTEGER NOT NULL DEFAULT 1
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_task_outbound_uniq
+    ON task_outbound_logs(task_id, source, protocol, target_host, target_port);
+CREATE INDEX IF NOT EXISTS idx_task_outbound_task
+    ON task_outbound_logs(task_id, last_seen DESC);

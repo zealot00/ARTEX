@@ -738,6 +738,7 @@ func (s *Server) toolRunPoc() actool.CoreTool {
 			if p.OOBToken != "" {
 				oobURL = oobBaseURL() + "/oob/" + p.OOBToken
 			}
+			s.recordTaskOutbound(t, "poc", "http", p.Target, "POC", "PoC verification")
 
 			if p.TemplatePath != "" {
 				fullPath, err := resolveOfflineTemplate(nucleiTemplatesDir(), p.TemplatePath)

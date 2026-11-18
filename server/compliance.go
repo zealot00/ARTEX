@@ -216,6 +216,7 @@ func (s *Server) getMLPSReport(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	outboundLogs, _ := s.m.PG().ListTaskOutboundLogs(taskID)
 	md := report.MLPSMarkdown(report.MLPSInput{
 		TaskID:            t.ID,
 		ExternalRef:       t.ExternalRef,
@@ -227,6 +228,7 @@ func (s *Server) getMLPSReport(w http.ResponseWriter, r *http.Request) {
 		AssetCounts:       counts,
 		Checks:            checks,
 		Findings:          findings,
+		OutboundLogs:      outboundLogs,
 	})
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.WriteHeader(200)

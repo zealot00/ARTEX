@@ -22,6 +22,7 @@ type MLPSInput struct {
 	AssetCounts       map[string]int
 	Checks            []db.TaskCheck
 	Findings          []*db.Node
+	OutboundLogs      []db.OutboundLog
 }
 
 var checkStatusLabel = map[string]string{
@@ -117,7 +118,29 @@ func MLPSMarkdown(in MLPSInput) string {
 		}
 	}
 
-	fmt.Fprintf(&b, "## 5. 整改与复测建议\n\n")
+	fmt.Fprintf(&b, "## 5. 任务执行期间外联审计记录（用于上层流量核查自证）\n\n")
+	if len(in.OutboundLogs) == 0 {
+		b.WriteString("_本次任务执行期间未记录到外部外联请求。_\n\n")
+	} else {
+		b.WriteString("| 外部目标 Host | 端口 | 协议 | 来源 | 次数 | 首次时间 | 最近时间 | 用途说明 | URL 摘要 |\n")
+		b.WriteString("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
+		for _, o := range in.OutboundLogs {
+			fmt.Fprintf(&b, "| `%s` | %d | `%s` | `%s` | %d | %s | %s | %s | %s |\n",
+				escapeMDCell(o.TargetHost),
+				o.TargetPort,
+				escapeMDCell(o.Protocol),
+				escapeMDCell(o.Source),
+				o.HitCount,
+				o.FirstSeen.Format("2006-01-02 15:04:05"),
+				o.LastSeen.Format("2006-01-02 15:04:05"),
+				escapeMDCell(nz(o.Purpose, "-")),
+				escapeMDCell(clipRunes(nz(o.URLPreview, "-"), 96)),
+			)
+		}
+		b.WriteString("\n")
+	}
+
+	fmt.Fprintf(&b, "## 6. 整改与复测建议\n\n")
 	fmt.Fprintf(&b, "1. 针对上述“未通过”控制点与高/中危漏洞，按业务影响优先级实施整改并回归验证。\n")
 	fmt.Fprintf(&b, "2. 对仍处于“待测试”或“受阻”的检查项（如因生产环境窗口、独立网络区域或人工配合限制），建议在具备测试窗口后补充专项人工验证。\n")
 	fmt.Fprintf(&b, "3. 整改完成后，可通过 ARTEX 复测流程对相应 Finding 执行回归验证并重新导出报告留档。\n")

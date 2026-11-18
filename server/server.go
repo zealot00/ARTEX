@@ -197,6 +197,11 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 	for _, o := range opts {
 		o(s)
 	}
+	if s.m != nil && s.m.traffic != nil {
+		s.m.traffic.SetOnOutbound(func(host string, port int, scheme, method, rawURL string) {
+			go s.recordProxyOutbound(host, port, scheme, method, rawURL)
+		})
+	}
 	if s.m != nil && s.sessMgr != nil {
 		s.m.onTaskEnd = func(taskID string) {
 			s.sessMgr.CloseTask(taskID)
@@ -779,6 +784,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tasks/{id}/sessions", s.listTaskSessions)
 	mux.HandleFunc("DELETE /api/tasks/{id}/sessions/{sid}", s.closeTaskSession)
 	mux.HandleFunc("GET /api/tasks/{id}/oob", s.listTaskOOBTokens)
+	mux.HandleFunc("GET /api/tasks/{id}/outbound", s.listTaskOutbound)
 	mux.HandleFunc("GET /api/tasks/{id}/lessons", s.taskLessons)
 	mux.HandleFunc("POST /api/tasks/{id}/lessons/extract", s.extractTaskLessons)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTaskMetadata)
@@ -4227,9 +4233,15 @@ func (s *Server) getReport(w http.ResponseWriter, r *http.Request) {
 			counts[ty] = len(ns)
 		}
 	}
+	var outboundLogs []db.OutboundLog
+	if s.m != nil && s.m.pg != nil {
+		if tid, err := strconv.ParseInt(t.ID, 10, 64); err == nil && tid > 0 {
+			outboundLogs, _ = s.m.pg.ListTaskOutboundLogs(tid)
+		}
+	}
 	md := report.Markdown(report.Input{
 		Title: t.Description, Goal: t.Goal, GeneratedAt: time.Now(),
-		AssetCounts: counts, Findings: findings,
+		AssetCounts: counts, Findings: findings, OutboundLogs: outboundLogs,
 	})
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.WriteHeader(200)

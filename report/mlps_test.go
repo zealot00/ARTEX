@@ -43,6 +43,19 @@ func TestMLPSMarkdownIncludesNegativeEvidenceAndFindings(t *testing.T) {
 				Payload: []byte(`{"vulnclass":"IDOR","name":"订单水平越权","severity":"high","summary":"未校验订单归属","evidence":{"poc":"GET /api/v1/orders/1002 -> 200 OK"}}`),
 			},
 		},
+		OutboundLogs: []db.OutboundLog{
+			{
+				Source:     "proxy",
+				Protocol:   "https",
+				TargetHost: "nvd.nist.gov",
+				TargetPort: 443,
+				HitCount:   3,
+				Purpose:    "HTTP/HTTPS proxy egress",
+				URLPreview: "https://nvd.nist.gov/vuln/detail/CVE-2024-1234",
+				FirstSeen:  time.Date(2026, 11, 17, 11, 50, 0, 0, time.UTC),
+				LastSeen:   time.Date(2026, 11, 17, 11, 55, 0, 0, time.UTC),
+			},
+		},
 	})
 
 	for _, want := range []string{
@@ -52,9 +65,32 @@ func TestMLPSMarkdownIncludesNegativeEvidenceAndFindings(t *testing.T) {
 		"未通过 (存在风险)",
 		"sslscan 仅支持 TLS 1.2/1.3",
 		"[HIGH] 订单水平越权",
+		"任务执行期间外联审计记录",
+		"`nvd.nist.gov`",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("MLPS report missing %q:\n%s", want, md)
 		}
+	}
+
+	std := Markdown(Input{
+		Title:       "Standard Test",
+		Goal:        "Check outbound section",
+		GeneratedAt: time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC),
+		OutboundLogs: []db.OutboundLog{
+			{
+				Source:     "proxy",
+				Protocol:   "https",
+				TargetHost: "api.github.com",
+				TargetPort: 443,
+				HitCount:   2,
+				Purpose:    "HTTP/HTTPS proxy egress",
+				FirstSeen:  time.Date(2026, 11, 17, 11, 50, 0, 0, time.UTC),
+				LastSeen:   time.Date(2026, 11, 17, 11, 51, 0, 0, time.UTC),
+			},
+		},
+	})
+	if !strings.Contains(std, "Outbound / External Connections Audit") || !strings.Contains(std, "`api.github.com`") {
+		t.Errorf("standard report missing outbound section:\n%s", std)
 	}
 }
