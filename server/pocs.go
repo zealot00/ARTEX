@@ -148,7 +148,7 @@ func (s *Server) seedDefaultPocs() {
 }
 
 func defaultIntranetPocs() []db.UpsertPocInput {
-	return []db.UpsertPocInput{
+	base := []db.UpsertPocInput{
 		{
 			Name:            "intranet-spring-actuator-exposure",
 			Kind:            db.PocKindNucleiYAML,
@@ -1334,6 +1334,7 @@ except Exception as e:
 `,
 		},
 	}
+	return append(base, extraInfraPocs()...)
 }
 
 func searchOfflineNucleiTemplates(root, query, tag string, limit int) []string {

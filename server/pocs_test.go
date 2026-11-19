@@ -111,11 +111,11 @@ func TestSearchPocsOfflineTemplatesAndFence(t *testing.T) {
 
 func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 	pocs := defaultIntranetPocs()
-	if len(pocs) < 30 {
-		t.Fatalf("expected at least 30 built-in intranet/infra PoCs, got %d", len(pocs))
+	if len(pocs) < 45 {
+		t.Fatalf("expected at least 45 built-in intranet/infra PoCs, got %d", len(pocs))
 	}
 	seen := map[string]bool{}
-	var redisScript, memcachedScript, rsyncScript, printScript string
+	var redisScript, memcachedScript, rsyncScript, printScript, zkScript string
 	for _, p := range pocs {
 		if p.Name == "" || strings.TrimSpace(p.Content) == "" {
 			t.Fatalf("invalid default poc entry: %+v", p)
@@ -136,6 +136,8 @@ func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 			rsyncScript = p.Content
 		case "infra-print-cups-ipp-exposure":
 			printScript = p.Content
+		case "infra-zookeeper-unauth-4lw":
+			zkScript = p.Content
 		}
 	}
 	for _, required := range []string{
@@ -157,6 +159,21 @@ func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 		"infra-rsync-anonymous-modules",
 		"infra-nfs-export-exposure",
 		"infra-dns-zone-transfer-axfr",
+		"infra-mongodb-unauth-probe",
+		"infra-zookeeper-unauth-4lw",
+		"infra-kafka-ui-akhq-exposure",
+		"infra-hadoop-yarn-hdfs-unauth",
+		"infra-spark-flink-unauth",
+		"infra-rabbitmq-management-exposure",
+		"infra-gitlab-public-explore",
+		"infra-nexus-artifactory-unauth",
+		"infra-sonarqube-unauth-exposure",
+		"infra-kibana-unauth-exposure",
+		"infra-xxljob-admin-exposure",
+		"infra-eureka-consul-unauth",
+		"infra-minio-console-metrics",
+		"infra-nginx-apache-status-leak",
+		"infra-tls-weak-protocol-cipher",
 	} {
 		if !seen[required] {
 			t.Fatalf("missing required infra PoC %q", required)
@@ -269,5 +286,34 @@ func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 	cupsRes, err := runTool.Call(context.Background(), cupsPayload, nil)
 	if err != nil || cupsRes.IsError || !strings.Contains(resultText(cupsRes), "CUPS_EXPOSED") {
 		t.Fatalf("cups print probe failed: err=%v res=%+v", err, cupsRes)
+	}
+
+	// Execute ZooKeeper 4lw probe against a local mock TCP listener.
+	zkLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zkLn.Close()
+	go func() {
+		for i := 0; i < 3; i++ {
+			conn, err := zkLn.Accept()
+			if err != nil {
+				return
+			}
+			buf := make([]byte, 32)
+			_, _ = conn.Read(buf)
+			_, _ = conn.Write([]byte("imok\n"))
+			_ = conn.Close()
+		}
+	}()
+	zkPayload, _ := json.Marshal(map[string]any{
+		"task_id":        "101",
+		"target":         zkLn.Addr().String(),
+		"inline_kind":    "python_script",
+		"inline_content": zkScript,
+	})
+	zkRes, err := runTool.Call(context.Background(), zkPayload, nil)
+	if err != nil || zkRes.IsError || !strings.Contains(resultText(zkRes), "imok") {
+		t.Fatalf("zookeeper probe failed: err=%v res=%+v", err, zkRes)
 	}
 }
