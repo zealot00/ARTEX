@@ -907,6 +907,432 @@ except Exception as e:
     sys.exit(1)
 `,
 		},
+		{
+			Name:            "infra-ssh-weak-algos-auth",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "medium",
+			Tags:            "ssh,crypto,infra,misconfig,intranet",
+			Description:     "Audit SSH service banner, legacy SSHv1, weak ciphers/KEX/MACs (CBC, arcfour, diffie-hellman-group1-sha1), and password authentication status.",
+			ExploitGuidance: "Record weak SSH algorithms or open password auth under NET-TLS / AUTH-PWD; if password auth is enabled, follow up with bounded run_credential_audit.",
+			CreatedBy:       "system",
+			Content: `import os, shutil, socket, subprocess, sys, urllib.parse
+
+raw = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not raw:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+host, port = raw, 22
+if "://" in raw:
+    u = urllib.parse.urlsplit(raw)
+    host = u.hostname or raw
+    port = u.port or 22
+elif ":" in raw:
+    h, p = raw.rsplit(":", 1)
+    host = h.strip("[]")
+    try:
+        port = int(p)
+    except ValueError:
+        port = 22
+
+findings = []
+try:
+    with socket.create_connection((host, port), timeout=5) as s:
+        s.settimeout(4)
+        banner = s.recv(256).decode("utf-8", errors="ignore").strip()
+        if banner:
+            print(f"banner={banner}")
+            if banner.startswith("SSH-1."):
+                findings.append(f"SSHV1_ENABLED ({banner})")
+except Exception as e:
+    print(f"banner probe error: {e}")
+
+weak_markers = [
+    "diffie-hellman-group1-sha1",
+    "diffie-hellman-group14-sha1",
+    "arcfour",
+    "3des-cbc",
+    "aes128-cbc",
+    "aes256-cbc",
+    "ssh-dss",
+    "hmac-md5",
+]
+if shutil.which("nmap"):
+    try:
+        r = subprocess.run(
+            ["nmap", "-Pn", "-p", str(port), "--script", "ssh2-enum-algos,ssh-auth-methods", host],
+            capture_output=True, text=True, timeout=20,
+        )
+        out = r.stdout or ""
+        low = out.lower()
+        hit_algos = [m for m in weak_markers if m in low]
+        if hit_algos:
+            findings.append("WEAK_SSH_ALGOS: " + ", ".join(hit_algos))
+        if "password" in low and "ssh-auth-methods" in low:
+            findings.append("SSH_PASSWORD_AUTH_ENABLED")
+    except Exception as e:
+        print(f"nmap error: {e}")
+
+if findings:
+    print(f"CONFIRMED SSH weak config on {host}:{port}:")
+    for f in findings:
+        print(" - " + f)
+    sys.exit(0)
+print(f"No weak SSH algorithms or legacy protocol detected on {host}:{port}")
+sys.exit(1)
+`,
+		},
+		{
+			Name:            "infra-ntp-monlist-info",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "medium",
+			Tags:            "ntp,udp,infra,misconfig,intranet",
+			Description:     "Single-packet read-only UDP probe on NTP (:123) checking Mode 6 readvar info disclosure and Mode 7 monlist amplification exposure.",
+			ExploitGuidance: "Recommend adding 'restrict default kod nomodify notrap nopeer noquery' and 'disable monitor' in ntp.conf.",
+			CreatedBy:       "system",
+			Content: `import os, socket, sys, urllib.parse
+
+raw = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not raw:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+host, port = raw, 123
+if "://" in raw:
+    u = urllib.parse.urlsplit(raw)
+    host = u.hostname or raw
+    port = u.port or 123
+elif ":" in raw:
+    h, p = raw.rsplit(":", 1)
+    host = h.strip("[]")
+    try:
+        port = int(p)
+    except ValueError:
+        port = 123
+
+findings = []
+# 1) NTP Mode 6 READVAR (control message, single small read-only packet)
+mode6_req = bytes([0x16, 0x02, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+# 2) NTP Mode 7 REQ_MON_GETLIST_1 (private mode 7, single packet)
+mode7_req = bytes([0x17, 0x00, 0x03, 0x2a]) + b"\x00" * 44
+
+for label, pkt in [("NTP_MODE6_READVAR", mode6_req), ("NTP_MODE7_MONLIST", mode7_req)]:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(3)
+            s.sendto(pkt, (host, port))
+            resp, _ = s.recvfrom(4096)
+            if resp:
+                preview = resp.decode("latin-1", errors="ignore").replace("\r", " ").replace("\n", " ")[:180]
+                findings.append(f"{label} (bytes={len(resp)}): {preview}")
+    except Exception:
+        pass
+
+if findings:
+    print(f"CONFIRMED NTP control/monlist exposure on {host}:{port}:")
+    for f in findings:
+        print(" - " + f)
+    sys.exit(0)
+print(f"No NTP Mode 6/7 exposure detected on {host}:{port}")
+sys.exit(1)
+`,
+		},
+		{
+			Name:            "infra-print-cups-ipp-exposure",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "medium",
+			Tags:            "print,cups,ipp,jetdirect,infra,misconfig,intranet",
+			Description:     "Audit exposed print services: CUPS/IPP web interface (:631 /printers, /admin) and raw JetDirect (:9100 PJL INFO ID).",
+			ExploitGuidance: "Record exposed print interfaces under WIN-SVC; restrict CUPS/IPP and JetDirect 9100 to dedicated printer management VLANs.",
+			CreatedBy:       "system",
+			Content: `import os, socket, ssl, sys, urllib.parse, urllib.request
+
+raw = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not raw:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+host = raw
+custom_port = None
+if "://" in raw:
+    u = urllib.parse.urlsplit(raw)
+    host = u.hostname or raw
+    custom_port = u.port
+elif ":" in raw:
+    h, p = raw.rsplit(":", 1)
+    host = h.strip("[]")
+    try:
+        custom_port = int(p)
+    except ValueError:
+        custom_port = None
+
+findings = []
+ctx = ssl._create_unverified_context()
+
+cups_ports = [custom_port] if custom_port else [631]
+for cp in cups_ports:
+    for scheme in ("http", "https"):
+        for path in ("/printers/", "/admin", "/"):
+            url = f"{scheme}://{host}:{cp}{path}"
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "ARTEX-Print-Audit/1.0"})
+                with urllib.request.urlopen(req, timeout=4, context=ctx) as r:
+                    body = r.read(4096).decode("utf-8", errors="ignore")
+                    srv = r.headers.get("Server", "")
+                    if r.status == 200 and ("CUPS" in body or "CUPS" in srv or "Printers" in body):
+                        findings.append(f"CUPS_EXPOSED {url} (Server={srv!r})")
+                        break
+            except Exception:
+                continue
+        if findings:
+            break
+
+if not custom_port or custom_port == 9100:
+    try:
+        with socket.create_connection((host, 9100), timeout=4) as s:
+            s.settimeout(3)
+            s.sendall(b"\x1b%-12345X@PJL INFO ID\r\n\x1b%-12345X")
+            try:
+                data = s.recv(1024).decode("utf-8", errors="ignore").strip()
+            except Exception:
+                data = ""
+            findings.append(f"JETDIRECT_9100_OPEN (pjl={data[:120]!r})")
+    except Exception:
+        pass
+
+if findings:
+    print(f"CONFIRMED print service exposure on {host}:")
+    for f in findings:
+        print(" - " + f)
+    sys.exit(0)
+print(f"No CUPS/IPP (:631) or JetDirect (:9100) exposure detected on {host}")
+sys.exit(1)
+`,
+		},
+		{
+			Name:            "infra-ftp-anonymous-login",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "high",
+			Tags:            "ftp,unauth,infra,misconfig,intranet",
+			Description:     "Check whether FTP server permits anonymous login and exposes directory listings.",
+			ExploitGuidance: "Disable anonymous FTP login or restrict to non-sensitive read-only public mirrors.",
+			CreatedBy:       "system",
+			Content: `import ftplib, os, sys, urllib.parse
+
+raw = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not raw:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+host, port = raw, 21
+if "://" in raw:
+    u = urllib.parse.urlsplit(raw)
+    host = u.hostname or raw
+    port = u.port or 21
+elif ":" in raw:
+    h, p = raw.rsplit(":", 1)
+    host = h.strip("[]")
+    try:
+        port = int(p)
+    except ValueError:
+        port = 21
+
+try:
+    ftp = ftplib.FTP()
+    ftp.connect(host, port, timeout=5)
+    welcome = ftp.getwelcome()
+    ftp.login("anonymous", "anonymous@audit.local")
+    entries = []
+    try:
+        entries = ftp.nlst()[:10]
+    except Exception:
+        pass
+    ftp.quit()
+    print(f"CONFIRMED FTP anonymous login on {host}:{port} | welcome={welcome[:120]} | entries={entries}")
+    sys.exit(0)
+except Exception as e:
+    print(f"FTP anonymous login rejected or unreachable on {host}:{port}: {e}")
+    sys.exit(1)
+`,
+		},
+		{
+			Name:            "infra-memcached-unauth-stats",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "high",
+			Tags:            "memcached,database,unauth,infra,intranet",
+			Description:     "Pure-TCP read-only probe checking whether Memcached (:11211) accepts unauthenticated 'stats' command.",
+			ExploitGuidance: "Bind Memcached to 127.0.0.1 or enforce SASL authentication / internal firewall isolation.",
+			CreatedBy:       "system",
+			Content: `import os, socket, sys, urllib.parse
+
+raw = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not raw:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+host, port = raw, 11211
+if "://" in raw:
+    u = urllib.parse.urlsplit(raw)
+    host = u.hostname or raw
+    port = u.port or 11211
+elif ":" in raw:
+    h, p = raw.rsplit(":", 1)
+    host = h.strip("[]")
+    try:
+        port = int(p)
+    except ValueError:
+        port = 11211
+
+try:
+    with socket.create_connection((host, port), timeout=5) as s:
+        s.settimeout(4)
+        s.sendall(b"stats\r\n")
+        data = s.recv(4096).decode("utf-8", errors="ignore")
+        if "STAT version " in data or "STAT pid " in data:
+            lines = [ln for ln in data.splitlines() if ln.startswith("STAT version ") or ln.startswith("STAT curr_items ")]
+            print(f"CONFIRMED Memcached unauthenticated access on {host}:{port}: " + " | ".join(lines[:4]))
+            sys.exit(0)
+        print(f"Memcached did not return stats on {host}:{port}")
+        sys.exit(1)
+except Exception as e:
+    print(f"Memcached probe error on {host}:{port}: {e}")
+    sys.exit(1)
+`,
+		},
+		{
+			Name:            "infra-rsync-anonymous-modules",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "high",
+			Tags:            "rsync,file,unauth,infra,intranet",
+			Description:     "Pure-TCP read-only probe listing anonymously exposed rsync daemon (:873) modules.",
+			ExploitGuidance: "Review exposed module names; enforce auth users / secrets file and hosts allow in rsyncd.conf.",
+			CreatedBy:       "system",
+			Content: `import os, socket, sys, urllib.parse
+
+raw = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not raw:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+host, port = raw, 873
+if "://" in raw:
+    u = urllib.parse.urlsplit(raw)
+    host = u.hostname or raw
+    port = u.port or 873
+elif ":" in raw:
+    h, p = raw.rsplit(":", 1)
+    host = h.strip("[]")
+    try:
+        port = int(p)
+    except ValueError:
+        port = 873
+
+try:
+    with socket.create_connection((host, port), timeout=5) as s:
+        s.settimeout(4)
+        greeting = s.recv(256).decode("utf-8", errors="ignore").strip()
+        if not greeting.startswith("@RSYNCD:"):
+            print(f"Not an rsync daemon on {host}:{port}")
+            sys.exit(1)
+        s.sendall((greeting + "\n").encode("utf-8"))
+        s.sendall(b"#list\n")
+        listing = s.recv(4096).decode("utf-8", errors="ignore")
+        modules = [ln.strip() for ln in listing.splitlines() if ln.strip() and not ln.startswith("@RSYNCD:")]
+        if modules:
+            print(f"CONFIRMED rsync anonymous module listing on {host}:{port}: " + ", ".join(modules[:10]))
+            sys.exit(0)
+        print(f"Rsync daemon found on {host}:{port} but no anonymous modules listed")
+        sys.exit(1)
+except Exception as e:
+    print(f"rsync probe error on {host}:{port}: {e}")
+    sys.exit(1)
+`,
+		},
+		{
+			Name:            "infra-nfs-export-exposure",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "high",
+			Tags:            "nfs,rpc,file,unauth,infra,intranet",
+			Description:     "Detect exposed NFS exports via showmount or nmap nfs-showmount script.",
+			ExploitGuidance: "Restrict /etc/exports to specific client IPs and enforce root_squash.",
+			CreatedBy:       "system",
+			Content: `import os, shutil, subprocess, sys, urllib.parse
+
+raw = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not raw:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+host = raw
+if "://" in raw:
+    host = urllib.parse.urlsplit(raw).hostname or raw
+elif ":" in raw:
+    host = raw.split(":", 1)[0]
+
+if shutil.which("showmount"):
+    try:
+        r = subprocess.run(["showmount", "-e", host], capture_output=True, text=True, timeout=10)
+        lines = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip() and not ln.lower().startswith("export list")]
+        if r.returncode == 0 and lines:
+            print(f"CONFIRMED NFS exports on {host}: " + "; ".join(lines[:10]))
+            sys.exit(0)
+    except Exception as e:
+        print(f"showmount error: {e}")
+
+if shutil.which("nmap"):
+    try:
+        r = subprocess.run(["nmap", "-Pn", "-p", "111,2049", "--script", "nfs-showmount", host], capture_output=True, text=True, timeout=20)
+        out = r.stdout or ""
+        if "nfs-showmount:" in out:
+            print(f"CONFIRMED NFS exports on {host}:\n" + out[:1000])
+            sys.exit(0)
+    except Exception as e:
+        print(f"nmap error: {e}")
+
+print(f"No exposed NFS exports detected on {host}")
+sys.exit(1)
+`,
+		},
+		{
+			Name:            "infra-dns-zone-transfer-axfr",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "high",
+			Tags:            "dns,axfr,infra,misconfig,intranet",
+			Description:     "Check whether an internal DNS server permits unauthenticated zone transfer (AXFR). Target format: 'dns_server/zone' or 'zone@dns_server'.",
+			ExploitGuidance: "Restrict allow-transfer in BIND/DNS config to authorized secondary nameservers only.",
+			CreatedBy:       "system",
+			Content: `import os, shutil, subprocess, sys
+
+raw = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not raw:
+    print("ARTEX_POC_TARGET is required (use 'zone@dns_ip' or 'dns_ip/zone')", file=sys.stderr)
+    sys.exit(2)
+if not shutil.which("dig"):
+    print("dig binary not installed", file=sys.stderr)
+    sys.exit(1)
+
+if "@" in raw:
+    zone, server = raw.split("@", 1)
+elif "/" in raw:
+    server, zone = raw.split("/", 1)
+else:
+    print("Provide both DNS server and zone name (e.g. 'corp.local@10.10.0.53')", file=sys.stderr)
+    sys.exit(2)
+
+try:
+    r = subprocess.run(["dig", "+time=4", "+tries=1", f"@{server.strip()}", zone.strip(), "AXFR"], capture_output=True, text=True, timeout=10)
+    out = r.stdout or ""
+    if "XFR size:" in out and "Transfer failed" not in out:
+        lines = [ln for ln in out.splitlines() if ln and not ln.startswith(";")][:15]
+        print(f"CONFIRMED DNS AXFR zone transfer on {zone}@{server}:\n" + "\n".join(lines))
+        sys.exit(0)
+    print(f"DNS AXFR refused or failed for {zone}@{server}")
+    sys.exit(1)
+except Exception as e:
+    print(f"dig error: {e}")
+    sys.exit(1)
+`,
+		},
 	}
 }
 

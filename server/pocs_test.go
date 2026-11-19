@@ -111,11 +111,11 @@ func TestSearchPocsOfflineTemplatesAndFence(t *testing.T) {
 
 func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 	pocs := defaultIntranetPocs()
-	if len(pocs) < 22 {
-		t.Fatalf("expected at least 22 built-in intranet/infra PoCs, got %d", len(pocs))
+	if len(pocs) < 30 {
+		t.Fatalf("expected at least 30 built-in intranet/infra PoCs, got %d", len(pocs))
 	}
 	seen := map[string]bool{}
-	var redisScript string
+	var redisScript, memcachedScript, rsyncScript, printScript string
 	for _, p := range pocs {
 		if p.Name == "" || strings.TrimSpace(p.Content) == "" {
 			t.Fatalf("invalid default poc entry: %+v", p)
@@ -127,8 +127,15 @@ func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 		if p.Kind != db.PocKindNucleiYAML && p.Kind != db.PocKindPythonScript {
 			t.Fatalf("invalid kind %q on %s", p.Kind, p.Name)
 		}
-		if p.Name == "infra-redis-unauth-probe" {
+		switch p.Name {
+		case "infra-redis-unauth-probe":
 			redisScript = p.Content
+		case "infra-memcached-unauth-stats":
+			memcachedScript = p.Content
+		case "infra-rsync-anonymous-modules":
+			rsyncScript = p.Content
+		case "infra-print-cups-ipp-exposure":
+			printScript = p.Content
 		}
 	}
 	for _, required := range []string{
@@ -142,6 +149,14 @@ func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 		"infra-jenkins-unauth-exposure",
 		"infra-ldap-anonymous-bind",
 		"infra-snmp-default-community",
+		"infra-ssh-weak-algos-auth",
+		"infra-ntp-monlist-info",
+		"infra-print-cups-ipp-exposure",
+		"infra-ftp-anonymous-login",
+		"infra-memcached-unauth-stats",
+		"infra-rsync-anonymous-modules",
+		"infra-nfs-export-exposure",
+		"infra-dns-zone-transfer-axfr",
 	} {
 		if !seen[required] {
 			t.Fatalf("missing required infra PoC %q", required)
@@ -181,5 +196,78 @@ func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 	txt := resultText(res)
 	if !strings.Contains(txt, "CONFIRMED Redis unauthenticated access") || !strings.Contains(txt, "redis_version:7.2.4") {
 		t.Fatalf("unexpected redis probe output: %s", txt)
+	}
+
+	// Execute Memcached unauth probe against a local mock TCP listener.
+	mcLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mcLn.Close()
+	go func() {
+		conn, err := mcLn.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 128)
+		_, _ = conn.Read(buf)
+		_, _ = conn.Write([]byte("STAT version 1.6.22\r\nSTAT curr_items 42\r\nEND\r\n"))
+	}()
+	mcPayload, _ := json.Marshal(map[string]any{
+		"task_id":        "101",
+		"target":         mcLn.Addr().String(),
+		"inline_kind":    "python_script",
+		"inline_content": memcachedScript,
+	})
+	mcRes, err := runTool.Call(context.Background(), mcPayload, nil)
+	if err != nil || mcRes.IsError || !strings.Contains(resultText(mcRes), "CONFIRMED Memcached unauthenticated access") {
+		t.Fatalf("memcached probe failed: err=%v res=%+v", err, mcRes)
+	}
+
+	// Execute rsync anonymous module listing probe against a local mock TCP listener.
+	rsLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rsLn.Close()
+	go func() {
+		conn, err := rsLn.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = conn.Write([]byte("@RSYNCD: 31.0\n"))
+		buf := make([]byte, 256)
+		_, _ = conn.Read(buf)
+		_, _ = conn.Write([]byte("backups\tDaily backups\n@RSYNCD: EXIT\n"))
+	}()
+	rsPayload, _ := json.Marshal(map[string]any{
+		"task_id":        "101",
+		"target":         rsLn.Addr().String(),
+		"inline_kind":    "python_script",
+		"inline_content": rsyncScript,
+	})
+	rsRes, err := runTool.Call(context.Background(), rsPayload, nil)
+	if err != nil || rsRes.IsError || !strings.Contains(resultText(rsRes), "backups") {
+		t.Fatalf("rsync probe failed: err=%v res=%+v", err, rsRes)
+	}
+
+	// Execute CUPS print exposure probe against a local mock HTTP server.
+	cupsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Server", "CUPS/2.4")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte("<html><title>Printers - CUPS 2.4</title></html>"))
+	}))
+	defer cupsSrv.Close()
+	cupsPayload, _ := json.Marshal(map[string]any{
+		"task_id":        "101",
+		"target":         cupsSrv.URL,
+		"inline_kind":    "python_script",
+		"inline_content": printScript,
+	})
+	cupsRes, err := runTool.Call(context.Background(), cupsPayload, nil)
+	if err != nil || cupsRes.IsError || !strings.Contains(resultText(cupsRes), "CUPS_EXPOSED") {
+		t.Fatalf("cups print probe failed: err=%v res=%+v", err, cupsRes)
 	}
 }
