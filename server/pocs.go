@@ -137,7 +137,18 @@ func (s *Server) seedDefaultPocs() {
 	if s.m == nil || s.m.pg == nil {
 		return
 	}
-	defaults := []db.UpsertPocInput{
+	for _, d := range defaultIntranetPocs() {
+		if _, err := s.m.pg.GetPocByRef(d.Name); err == nil {
+			continue
+		}
+		if _, _, err := s.m.pg.UpsertPoc(d); err != nil {
+			log.Printf("[pocs] seed default %s: %v", d.Name, err)
+		}
+	}
+}
+
+func defaultIntranetPocs() []db.UpsertPocInput {
+	return []db.UpsertPocInput{
 		{
 			Name:            "intranet-spring-actuator-exposure",
 			Kind:            db.PocKindNucleiYAML,
@@ -544,14 +555,358 @@ print("no evaluated SSTI marker observed")
 sys.exit(1)
 `,
 		},
-	}
-	for _, d := range defaults {
-		if _, err := s.m.pg.GetPocByRef(d.Name); err == nil {
-			continue
-		}
-		if _, _, err := s.m.pg.UpsertPoc(d); err != nil {
-			log.Printf("[pocs] seed default %s: %v", d.Name, err)
-		}
+		{
+			Name:            "infra-samba-smb-null-signing",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "high",
+			Tags:            "samba,smb,windows,infra,misconfig,intranet",
+			Description:     "Audit Samba/SMB host for anonymous null-session share listing, disabled SMB signing (relay risk), and legacy SMBv1 dialect.",
+			ExploitGuidance: "Record exposed anonymous shares, SMB signing status, or SMBv1 dialect under WIN-SVC; if authorized and lateral_gate is approved, inspect readable non-sensitive config shares.",
+			CreatedBy:       "system",
+			Content: `import os, shutil, subprocess, sys, urllib.parse
+
+raw = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not raw:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+host = raw
+if "://" in raw:
+    host = urllib.parse.urlsplit(raw).hostname or raw
+elif ":" in raw:
+    host = raw.split(":", 1)[0]
+
+findings = []
+
+if shutil.which("smbclient"):
+    try:
+        r = subprocess.run(["smbclient", "-L", f"//{host}", "-N", "-g"], capture_output=True, text=True, timeout=10)
+        out = (r.stdout or "") + "\n" + (r.stderr or "")
+        shares = [line.strip() for line in out.splitlines() if line.startswith("Disk|") or line.startswith("IPC|")]
+        if shares:
+            findings.append("SMB_NULL_SESSION_SHARES: " + ", ".join(shares[:10]))
+    except Exception as e:
+        print(f"smbclient error: {e}")
+
+if shutil.which("nmap"):
+    try:
+        r = subprocess.run(
+            ["nmap", "-Pn", "-p", "445", "--script", "smb2-security-mode,smb-protocols", host],
+            capture_output=True, text=True, timeout=20,
+        )
+        out = r.stdout or ""
+        if "Message signing enabled but not required" in out or "Message signing disabled" in out:
+            findings.append("SMB_SIGNING_NOT_REQUIRED")
+        if "NT LM 0.12" in out or "SMBv1" in out:
+            findings.append("SMBV1_ENABLED")
+    except Exception as e:
+        print(f"nmap error: {e}")
+
+if findings:
+    print("CONFIRMED SMB/Samba weak configuration on " + host + ":")
+    for f in findings:
+        print(" - " + f)
+    sys.exit(0)
+
+print(f"No anonymous SMB shares, disabled signing, or SMBv1 detected on {host}")
+sys.exit(1)
+`,
+		},
+		{
+			Name:            "infra-k8s-kubelet-unauth",
+			Kind:            db.PocKindNucleiYAML,
+			Severity:        "critical",
+			Tags:            "kubernetes,k8s,kubelet,container,unauth,infra",
+			Description:     "Detect unauthenticated Kubelet read-only (:10255) or API (:10250) endpoints exposing Pod specs, env vars, and running containers.",
+			ExploitGuidance: "Verify exposed PodList/container metadata (read-only); check if anonymous-auth is enabled on :10250 and record under SYS-CONFIG / AUTH-ACCESS.",
+			CreatedBy:       "system",
+			Content: `id: infra-k8s-kubelet-unauth
+info:
+  name: Kubernetes Kubelet Unauthenticated Exposure
+  severity: critical
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/pods"
+      - "{{BaseURL}}/runningpods/"
+      - "{{BaseURL}}/stats/summary"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"kind":"PodList"'
+          - '"kind": "PodList"'
+          - '"nodeName"'
+        condition: or
+`,
+		},
+		{
+			Name:            "infra-k8s-etcd-unauth",
+			Kind:            db.PocKindNucleiYAML,
+			Severity:        "critical",
+			Tags:            "kubernetes,k8s,etcd,unauth,infra",
+			Description:     "Detect unauthenticated etcd (:2379) API exposure allowing cluster metadata or secret key enumeration.",
+			ExploitGuidance: "Verify /version or /v2/members read-only exposure; never dump or modify cluster secrets without explicit approval.",
+			CreatedBy:       "system",
+			Content: `id: infra-k8s-etcd-unauth
+info:
+  name: Kubernetes etcd Unauthenticated API Exposure
+  severity: critical
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/version"
+      - "{{BaseURL}}/v2/keys"
+      - "{{BaseURL}}/v2/members"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"etcdserver"'
+          - '"etcdcluster"'
+          - '"members"'
+        condition: or
+`,
+		},
+		{
+			Name:            "infra-k8s-dashboard-unauth",
+			Kind:            db.PocKindNucleiYAML,
+			Severity:        "high",
+			Tags:            "kubernetes,k8s,dashboard,unauth,infra",
+			Description:     "Detect unauthenticated Kubernetes Dashboard API access (e.g. skip-login or default ServiceAccount exposure).",
+			ExploitGuidance: "Verify whether /api/v1/namespace returns cluster namespaces without a Bearer token.",
+			CreatedBy:       "system",
+			Content: `id: infra-k8s-dashboard-unauth
+info:
+  name: Kubernetes Dashboard Unauthenticated Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/v1/namespace"
+      - "{{BaseURL}}/api/v1/pod/default"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"namespaces"'
+          - '"pods"'
+          - '"listMeta"'
+        condition: and
+`,
+		},
+		{
+			Name:            "infra-docker-registry-harbor-unauth",
+			Kind:            db.PocKindNucleiYAML,
+			Severity:        "high",
+			Tags:            "docker,harbor,registry,container,unauth,infra",
+			Description:     "Detect unauthenticated Docker Registry v2 (/v2/_catalog) or Harbor (/api/v2.0/projects) image repository listing.",
+			ExploitGuidance: "List exposed repository names to prove internal image/source disclosure risk.",
+			CreatedBy:       "system",
+			Content: `id: infra-docker-registry-harbor-unauth
+info:
+  name: Docker Registry / Harbor Unauthenticated Catalog Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/v2/_catalog"
+      - "{{BaseURL}}/api/v2.0/projects"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"repositories"'
+          - '"project_id"'
+        condition: or
+`,
+		},
+		{
+			Name:            "infra-redis-unauth-probe",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "critical",
+			Tags:            "redis,database,unauth,infra,intranet",
+			Description:     "Pure-TCP read-only probe checking whether Redis accepts unauthenticated PING / INFO server commands.",
+			ExploitGuidance: "Report exact redis_version and OS line from INFO server; never run CONFIG SET / FLUSHALL / SAVE in production.",
+			CreatedBy:       "system",
+			Content: `import os, socket, sys, urllib.parse
+
+raw = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not raw:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+host, port = raw, 6379
+if "://" in raw:
+    u = urllib.parse.urlsplit(raw)
+    host = u.hostname or raw
+    port = u.port or 6379
+elif ":" in raw:
+    h, p = raw.rsplit(":", 1)
+    host = h.strip("[]")
+    try:
+        port = int(p)
+    except ValueError:
+        port = 6379
+
+try:
+    with socket.create_connection((host, port), timeout=5) as s:
+        s.settimeout(5)
+        s.sendall(b"PING\r\nINFO server\r\n")
+        data = s.recv(4096).decode("utf-8", errors="ignore")
+        if "+PONG" in data or "redis_version:" in data:
+            lines = [ln for ln in data.splitlines() if ln.startswith("+PONG") or ln.startswith("redis_version:") or ln.startswith("os:")]
+            print(f"CONFIRMED Redis unauthenticated access on {host}:{port}: " + " | ".join(lines[:4]))
+            sys.exit(0)
+        print(f"Redis authentication required or non-Redis response on {host}:{port}")
+        sys.exit(1)
+except Exception as e:
+    print(f"Redis probe error on {host}:{port}: {e}")
+    sys.exit(1)
+`,
+		},
+		{
+			Name:            "infra-elasticsearch-unauth",
+			Kind:            db.PocKindNucleiYAML,
+			Severity:        "high",
+			Tags:            "elasticsearch,database,unauth,infra,intranet",
+			Description:     "Detect unauthenticated Elasticsearch cluster endpoints (/_cat/indices, /_cluster/health).",
+			ExploitGuidance: "List index names and document counts via /_cat/indices?v as read-only proof of data exposure.",
+			CreatedBy:       "system",
+			Content: `id: infra-elasticsearch-unauth
+info:
+  name: Elasticsearch Unauthenticated Access
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/_cat/indices?v"
+      - "{{BaseURL}}/_cluster/health"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"cluster_name"'
+          - 'docs.count'
+        condition: or
+`,
+		},
+		{
+			Name:            "infra-jenkins-unauth-exposure",
+			Kind:            db.PocKindNucleiYAML,
+			Severity:        "high",
+			Tags:            "jenkins,ci,cd,unauth,infra,intranet",
+			Description:     "Detect unauthenticated Jenkins API (/api/json) or Groovy script console (/script) exposure.",
+			ExploitGuidance: "Verify read-only job/version listing on /api/json or anonymous access to /script without executing destructive commands.",
+			CreatedBy:       "system",
+			Content: `id: infra-jenkins-unauth-exposure
+info:
+  name: Jenkins Unauthenticated API or Script Console Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/json"
+      - "{{BaseURL}}/script"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"hudson.model.Hudson"'
+          - 'Script Console'
+        condition: or
+`,
+		},
+		{
+			Name:            "infra-ldap-anonymous-bind",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "medium",
+			Tags:            "ldap,ad,directory,samba,unauth,infra,intranet",
+			Description:     "Check whether LDAP/AD/Samba Directory permits anonymous base/RootDSE bind and exposes namingContexts.",
+			ExploitGuidance: "Record exposed namingContexts under AD-DIR; check if anonymous subtree search is also permitted.",
+			CreatedBy:       "system",
+			Content: `import os, shutil, subprocess, sys, urllib.parse
+
+raw = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not raw:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+if not shutil.which("ldapsearch"):
+    print("ldapsearch binary not installed", file=sys.stderr)
+    sys.exit(1)
+
+uri = raw if "://" in raw else f"ldap://{raw}"
+try:
+    r = subprocess.run(["ldapsearch", "-x", "-H", uri, "-s", "base", "namingContexts"], capture_output=True, text=True, timeout=10)
+    out = r.stdout or ""
+    contexts = [ln.strip() for ln in out.splitlines() if ln.lower().startswith("namingcontexts:")]
+    if contexts:
+        print(f"CONFIRMED LDAP anonymous bind on {uri}: " + "; ".join(contexts[:5]))
+        sys.exit(0)
+    print(f"No anonymous LDAP namingContexts exposed on {uri}")
+    sys.exit(1)
+except Exception as e:
+    print(f"ldapsearch error: {e}")
+    sys.exit(1)
+`,
+		},
+		{
+			Name:            "infra-snmp-default-community",
+			Kind:            db.PocKindPythonScript,
+			Severity:        "medium",
+			Tags:            "snmp,network,misconfig,infra,intranet",
+			Description:     "Check whether SNMPv2c accepts the default 'public' community string and discloses sysDescr.",
+			ExploitGuidance: "Report sysDescr exposure and recommend disabling SNMPv1/v2c or rotating community strings / migrating to SNMPv3.",
+			CreatedBy:       "system",
+			Content: `import os, shutil, subprocess, sys, urllib.parse
+
+raw = os.environ.get("ARTEX_POC_TARGET", "").strip()
+if not raw:
+    print("ARTEX_POC_TARGET is required", file=sys.stderr)
+    sys.exit(2)
+
+if not shutil.which("snmpget"):
+    print("snmpget binary not installed", file=sys.stderr)
+    sys.exit(1)
+
+host = raw
+if "://" in raw:
+    host = urllib.parse.urlsplit(raw).hostname or raw
+elif ":" in raw:
+    host = raw.split(":", 1)[0]
+
+try:
+    r = subprocess.run(["snmpget", "-v2c", "-c", "public", "-t", "3", "-r", "1", host, "1.3.6.1.2.1.1.1.0"], capture_output=True, text=True, timeout=10)
+    out = (r.stdout or "").strip()
+    if r.returncode == 0 and out:
+        print(f"CONFIRMED SNMPv2c default community 'public' on {host}: {out[:300]}")
+        sys.exit(0)
+    print(f"SNMPv2c default community 'public' rejected or unreachable on {host}")
+    sys.exit(1)
+except Exception as e:
+    print(f"snmpget error: {e}")
+    sys.exit(1)
+`,
+		},
 	}
 }
 

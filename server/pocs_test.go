@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/guard"
 )
 
@@ -104,5 +106,80 @@ func TestSearchPocsOfflineTemplatesAndFence(t *testing.T) {
 	txt := resultText(resInline)
 	if !strings.Contains(txt, "http://10.10.1.5:8080 tok123") || !strings.Contains(txt, `"matched":true`) {
 		t.Fatalf("unexpected inline PoC output: %s", txt)
+	}
+}
+
+func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
+	pocs := defaultIntranetPocs()
+	if len(pocs) < 22 {
+		t.Fatalf("expected at least 22 built-in intranet/infra PoCs, got %d", len(pocs))
+	}
+	seen := map[string]bool{}
+	var redisScript string
+	for _, p := range pocs {
+		if p.Name == "" || strings.TrimSpace(p.Content) == "" {
+			t.Fatalf("invalid default poc entry: %+v", p)
+		}
+		if seen[p.Name] {
+			t.Fatalf("duplicate default poc name: %s", p.Name)
+		}
+		seen[p.Name] = true
+		if p.Kind != db.PocKindNucleiYAML && p.Kind != db.PocKindPythonScript {
+			t.Fatalf("invalid kind %q on %s", p.Kind, p.Name)
+		}
+		if p.Name == "infra-redis-unauth-probe" {
+			redisScript = p.Content
+		}
+	}
+	for _, required := range []string{
+		"infra-samba-smb-null-signing",
+		"infra-k8s-kubelet-unauth",
+		"infra-k8s-etcd-unauth",
+		"infra-k8s-dashboard-unauth",
+		"infra-docker-registry-harbor-unauth",
+		"infra-redis-unauth-probe",
+		"infra-elasticsearch-unauth",
+		"infra-jenkins-unauth-exposure",
+		"infra-ldap-anonymous-bind",
+		"infra-snmp-default-community",
+	} {
+		if !seen[required] {
+			t.Fatalf("missing required infra PoC %q", required)
+		}
+	}
+
+	// Execute the built-in Redis unauth probe against a local mock TCP listener.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+		_, _ = conn.Read(buf)
+		_, _ = conn.Write([]byte("+PONG\r\n# Server\r\nredis_version:7.2.4\r\nos:Linux\r\n"))
+	}()
+
+	task := &Task{ID: "101", Guard: guard.New()}
+	s := &Server{m: &Manager{tasks: map[string]*Task{"101": task}}}
+	runTool := s.toolRunPoc()
+	payload, _ := json.Marshal(map[string]any{
+		"task_id":        "101",
+		"target":         ln.Addr().String(),
+		"inline_kind":    "python_script",
+		"inline_content": redisScript,
+	})
+	res, err := runTool.Call(context.Background(), payload, nil)
+	if err != nil || res.IsError {
+		t.Fatalf("redis probe failed: err=%v res=%+v", err, res)
+	}
+	txt := resultText(res)
+	if !strings.Contains(txt, "CONFIRMED Redis unauthenticated access") || !strings.Contains(txt, "redis_version:7.2.4") {
+		t.Fatalf("unexpected redis probe output: %s", txt)
 	}
 }

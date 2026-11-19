@@ -28,7 +28,7 @@ Use this skill when a foothold lands inside a container, Kubernetes Pod, or clou
   - `kubectl auth can-i --list` (or `kubectl --token="$(cat .../token)" --certificate-authority=.../ca.crt --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}" auth can-i --list`)
 - High-risk RBAC / workload conditions to audit:
   - `secrets` read (`get`/`list`), `pods/exec` or `pods/attach`, `pods` create (hostPath / `privileged: true` / `hostPID: true`), `nodes/proxy`, `clusterrolebindings` create/patch.
-  - Check kubelet read-only/authenticated ports (`10250`/`10255`) only within authorized `fence_rules`.
+  - Check kubelet read-only/authenticated ports (`10250`/`10255`), etcd (`2379`), Kubernetes Dashboard, and Docker Registry/Harbor via built-in PoCs: `search_pocs(tag="k8s")` / `search_pocs(tag="infra")` + `run_poc` strictly within authorized `fence_rules`.
 - Record verified negative/positive evidence via `record_check_result` (e.g., `AUTH-ACCESS` / `SYS-CONFIG`).
 
 ## 4. Cloud Instance Metadata (IMDS) Audit

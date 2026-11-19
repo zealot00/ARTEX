@@ -12,6 +12,7 @@ Use this skill for MLPS checks `AD-DIR` and `WIN-SVC` during authorized internal
   `nmap -sV -Pn -p 135,139,161,389,445,631,636,3268,3389,5985,5986 <target>`
 
 ## 2. SMB / Samba & Print Service Checks (`WIN-SVC`)
+- **Automated baseline check**: call `search_pocs(tag="samba")` / `run_poc(poc_ref="infra-samba-smb-null-signing", ...)` and `run_poc(poc_ref="infra-ldap-anonymous-bind", ...)` to quickly audit anonymous shares, SMB signing, SMBv1, and anonymous LDAP RootDSE.
 - **SMB signing & dialect check**:
   `nmap -p 445 --script smb2-security-mode,smb-protocols <target>`
 - **Anonymous share listing**:

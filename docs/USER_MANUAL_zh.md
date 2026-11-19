@@ -106,7 +106,7 @@ docker compose up -d --build
     ```bash
     ./scripts/sync-nuclei-templates.sh
     ```
-- **开箱预置与自编沉淀**：系统启动会自动在 `pocs` 表预置 12 项企业内网高频基础检测模板（Spring Actuator、Swagger/OpenAPI、`.env`/`.git`、GraphQL 内省、Nacos、Druid、Prometheus/Grafana、Docker/K8s 未授权、CORS、路径/代理头绕过、SSTI 基线与 Blind SSRF OOB）；若库中无现成模板，Agent 可结合 `skills/poc-verify-exploit/payloads.md` 现场编写并用 `run_poc(inline_kind, inline_content)` 验证，通过后调用 `save_poc` 沉淀进私有库。
+- **开箱预置与自编沉淀**：系统启动会自动在 `pocs` 表预置 22 项企业内网与基础设施高频检测模板（覆盖 Web/中间件：Spring Actuator、Swagger/OpenAPI、`.env`/`.git`、GraphQL 内省、Nacos、Druid、Prometheus/Grafana、CORS、路径/代理头绕过、SSTI 基线、Blind SSRF OOB；以及基础设施：Samba/SMB 空会话与签名/SMBv1、K8s Kubelet/etcd/Dashboard、Docker/Harbor Registry、Redis、Elasticsearch、Jenkins、LDAP 匿名绑定与 SNMP 默认团体名）；若库中无现成模板，Agent 可结合 `skills/poc-verify-exploit/payloads.md` 现场编写并用 `run_poc(inline_kind, inline_content)` 验证，通过后调用 `save_poc` 沉淀进私有库。
 - **上传企业私有 PoC**（仅 Admin JWT 权限，通过 `POST /api/pocs`）：
   ```bash
   curl -X POST http://127.0.0.1:8787/api/pocs \
