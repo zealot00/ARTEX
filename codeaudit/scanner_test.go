@@ -104,4 +104,23 @@ public class AuthController {
 	if !gotFastjson {
 		t.Fatalf("expected fastjson 1.2.68 advisory, got %+v", advs)
 	}
+
+	// 3) Minified JS with >64KB single line must still be scanned without bufio.ErrTooLong.
+	longLine := "var pad='" + strings.Repeat("a", 70*1024) + "';\neval(req.query.cmd);\n"
+	if err := os.WriteFile(filepath.Join(tmp, "bundle.min.js"), []byte(longLine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	jsSinks, err := ScanSinks(resolved, []string{"cmdi"}, 50)
+	if err != nil {
+		t.Fatalf("ScanSinks(longLine): %v", err)
+	}
+	var gotEval bool
+	for _, s := range jsSinks {
+		if s.File == "bundle.min.js" && s.Rule == "node-child-process" {
+			gotEval = true
+		}
+	}
+	if !gotEval {
+		t.Fatalf("expected node-child-process after >64KB line, got %+v", jsSinks)
+	}
 }

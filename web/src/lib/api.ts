@@ -1360,8 +1360,8 @@ export const api = {
     get<{ outbound: OutboundLog[] }>(`/tasks/${taskId}/outbound`).then((r) => arr(r.outbound)),
   taskProxyHeaders: (taskId: string) =>
     get<{ rules: ProxyHeaderRule[] }>(`/tasks/${taskId}/proxy-headers`).then((r) => arr(r.rules)),
-  updateTaskProxyHeaders: (taskId: string, rules: ProxyHeaderRule[]) =>
-    put<{ updated: boolean; rule_count: number }>(`/tasks/${taskId}/proxy-headers`, { rules }),
+  updateTaskProxyHeaders: (taskId: string, rules: ProxyHeaderRule[], merge = false) =>
+    put<{ updated: boolean; rule_count: number }>(`/tasks/${taskId}/proxy-headers`, { rules, merge }),
 
   // ---- enterprise private PoCs (admin JWT only) ----
   pocs: (query?: string, kind?: string) => {

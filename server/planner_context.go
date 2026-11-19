@@ -23,25 +23,34 @@ func (s *Server) buildPlannerRuntimeContext(taskID int64, taskDir string) string
 		return ""
 	}
 
+	t.lifecycleMu.RLock()
+	prodSafeMode := t.ProdSafeMode
+	fenceEnabled := t.FenceEnabled
+	fenceRules := append([]string(nil), t.FenceRules...)
+	lateralGate := t.LateralGate
+	lateralApproved := t.LateralApproved
+	complianceProfile := t.ComplianceProfile
+	t.lifecycleMu.RUnlock()
+
 	var b strings.Builder
 	b.WriteString("[Task runtime posture & enterprise capabilities (server-injected, authoritative)]:\n")
 
 	// 1. Guardrails & scope posture
-	fmt.Fprintf(&b, "- Guardrails: prod_safe_mode=%v, fence_enabled=%v", t.ProdSafeMode, t.FenceEnabled)
-	if t.FenceEnabled && len(t.FenceRules) > 0 {
-		fmt.Fprintf(&b, ", fence_rules=%v", t.FenceRules)
+	fmt.Fprintf(&b, "- Guardrails: prod_safe_mode=%v, fence_enabled=%v", prodSafeMode, fenceEnabled)
+	if fenceEnabled && len(fenceRules) > 0 {
+		fmt.Fprintf(&b, ", fence_rules=%v", fenceRules)
 	}
-	fmt.Fprintf(&b, ", lateral_gate=%v, lateral_approved=%v\n", t.LateralGate, t.LateralApproved)
-	if t.LateralGate && !t.LateralApproved {
+	fmt.Fprintf(&b, ", lateral_gate=%v, lateral_approved=%v\n", lateralGate, lateralApproved)
+	if lateralGate && !lateralApproved {
 		b.WriteString("  -> Lateral movement is GATED: focus on initial foothold verification; do NOT dispatch pivot/tunnel/AD-dump intents until operator approves lateral movement.\n")
 	}
 
 	// 2. MLPS 2.0 / compliance checklist progress
-	if s.m.pg != nil && (strings.TrimSpace(t.ComplianceProfile) != "" || t.ProdSafeMode) {
+	if s.m.pg != nil && (strings.TrimSpace(complianceProfile) != "" || prodSafeMode) {
 		if checks, err := s.m.pg.ListTaskChecks(taskID); err == nil && len(checks) > 0 {
 			sum := db.SummarizeTaskChecks(checks)
 			fmt.Fprintf(&b, "- Compliance (%s): %d/%d completed (passed=%d, failed=%d, na=%d, blocked=%d, pending=%d)\n",
-				t.ComplianceProfile, sum.Total-sum.Pending, sum.Total, sum.Passed, sum.Failed, sum.NA, sum.Blocked, sum.Pending)
+				complianceProfile, sum.Total-sum.Pending, sum.Total, sum.Passed, sum.Failed, sum.NA, sum.Blocked, sum.Pending)
 			var pendingCodes []string
 			for _, c := range checks {
 				if c.Status == db.CheckStatusPending {

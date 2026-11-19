@@ -56,19 +56,24 @@ func (s *Server) updateTaskProxyHeaders(w http.ResponseWriter, r *http.Request) 
 	}
 	var req struct {
 		Rules []traffic.HostHeaderRule `json:"rules"`
+		Merge bool                     `json:"merge"`
 	}
 	if err := decode(w, r, &req); err != nil {
 		writeErr(w, 400, "invalid JSON")
 		return
 	}
+	t.lifecycleMu.RLock()
+	fenceEnabled := t.FenceEnabled
+	t.lifecycleMu.RUnlock()
+
 	validated := make([]traffic.HostHeaderRule, 0, len(req.Rules))
 	for _, rule := range req.Rules {
 		host := strings.ToLower(strings.TrimSpace(rule.Host))
-		if host == "" || strings.Contains(host, "*") {
-			writeErr(w, 400, fmt.Sprintf("invalid host %q (wildcards are forbidden to prevent credential leakage)", rule.Host))
+		if !traffic.IsValidProxyHeaderHost(host) {
+			writeErr(w, 400, fmt.Sprintf("invalid host %q (wildcards, ports/paths, and broad TLD suffixes are forbidden to prevent credential leakage)", rule.Host))
 			return
 		}
-		if t.FenceEnabled && t.Guard != nil {
+		if fenceEnabled && t.Guard != nil {
 			checkHost := strings.TrimPrefix(host, ".")
 			probe, _ := json.Marshal(map[string]string{"url": "https://" + checkHost + "/"})
 			if blocked, reason := t.Guard.CheckFence("WebFetch", probe); blocked {
@@ -86,6 +91,11 @@ func (s *Server) updateTaskProxyHeaders(w http.ResponseWriter, r *http.Request) 
 			Overwrite: rule.Overwrite,
 		})
 	}
-	s.m.traffic.SetTaskHostHeaderRules(t.ID, validated)
-	writeJSON(w, 200, map[string]any{"updated": true, "rule_count": len(validated)})
+	ruleCount := len(validated)
+	if req.Merge {
+		ruleCount = s.m.traffic.UpsertTaskHostHeaderRules(t.ID, validated)
+	} else {
+		s.m.traffic.SetTaskHostHeaderRules(t.ID, validated)
+	}
+	writeJSON(w, 200, map[string]any{"updated": true, "rule_count": ruleCount})
 }

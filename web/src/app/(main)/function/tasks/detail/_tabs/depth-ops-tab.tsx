@@ -134,13 +134,17 @@ export function DepthOpsTab({
     if (!proxyHost.trim() || !proxyHeaderName.trim() || !proxyHeaderValue.trim()) return;
     setSavingProxyHeaders(true);
     try {
-      await api.updateTaskProxyHeaders(taskId, [
-        {
-          host: proxyHost.trim(),
-          headers: { [proxyHeaderName.trim()]: proxyHeaderValue },
-          overwrite: proxyOverwrite,
-        },
-      ]);
+      await api.updateTaskProxyHeaders(
+        taskId,
+        [
+          {
+            host: proxyHost.trim(),
+            headers: { [proxyHeaderName.trim()]: proxyHeaderValue },
+            overwrite: proxyOverwrite,
+          },
+        ],
+        true,
+      );
       toast.success(t("depth.proxyHeaders.savedToast"));
       setProxyHeaderValue("");
       await loadAll();

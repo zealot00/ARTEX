@@ -90,13 +90,23 @@ func shouldRecordOutbound(t *Task, host string) bool {
 	if h == "" || isLoopbackHost(h) {
 		return false
 	}
-	if t != nil && matchesDeclaredTargets(t.FenceRules, h) {
+	var fenceEnabled bool
+	var fenceRules []string
+	if t != nil {
+		t.lifecycleMu.RLock()
+		fenceEnabled = t.FenceEnabled
+		if len(t.FenceRules) > 0 {
+			fenceRules = append([]string(nil), t.FenceRules...)
+		}
+		t.lifecycleMu.RUnlock()
+	}
+	if len(fenceRules) > 0 && matchesDeclaredTargets(fenceRules, h) {
 		return false
 	}
 	if isPrivateIPHost(h) {
 		return false
 	}
-	if t != nil && t.FenceEnabled && t.Guard != nil {
+	if t != nil && fenceEnabled && t.Guard != nil {
 		probe, _ := json.Marshal(map[string]string{"url": "https://" + h + "/"})
 		if blocked, _ := t.Guard.CheckFence("WebFetch", probe); !blocked {
 			// Host is inside explicit fence rules; if it's an internal domain (no dot or .local/.corp/.internal),
@@ -141,7 +151,11 @@ func (s *Server) recordProxyOutbound(host string, port int, scheme, method, rawU
 	}
 	tasks := s.m.List()
 	for _, t := range tasks {
-		if t == nil || t.CompletedAt != 0 || t.Paused || t.Queued {
+		if t == nil {
+			continue
+		}
+		st := t.lifecycleSnapshot()
+		if st.CompletedAt != 0 || st.Paused || st.Queued {
 			continue
 		}
 		if !shouldRecordOutbound(t, host) {

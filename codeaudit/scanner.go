@@ -151,6 +151,7 @@ func MapEntrypoints(root string, limit int) ([]EntrypointHit, error) {
 		}
 		defer f.Close()
 		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 0, 64*1024), maxFileBytes)
 		lineNo := 0
 		for sc.Scan() {
 			lineNo++
@@ -254,6 +255,7 @@ func ScanSinks(root string, categories []string, limit int) ([]SinkHit, error) {
 		}
 		defer f.Close()
 		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 0, 64*1024), maxFileBytes)
 		lineNo := 0
 		for sc.Scan() {
 			lineNo++
@@ -322,6 +324,7 @@ func TraceSymbol(root, symbol string, limit int) ([]SymbolRef, error) {
 		}
 		defer f.Close()
 		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 0, 64*1024), maxFileBytes)
 		lineNo := 0
 		for sc.Scan() {
 			lineNo++

@@ -19,7 +19,7 @@ func TestTaskProxyHeaderRulesIsolationAndFence(t *testing.T) {
 	}
 	defer tr.Close()
 
-	rules, err := guard.ParseFenceRules([]string{"portal.corp.local"})
+	rules, err := guard.ParseFenceRules([]string{"*.corp.local"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,13 +29,15 @@ func TestTaskProxyHeaderRulesIsolationAndFence(t *testing.T) {
 	m := &Manager{tasks: map[string]*Task{"55": task}, traffic: tr}
 	s := &Server{m: m, jwtKey: []byte("0123456789abcdef0123456789abcdef")}
 
-	// Reject wildcard host to prevent credential leakage.
-	reqWild := httptest.NewRequest("PUT", "/api/tasks/55/proxy-headers", strings.NewReader(`{"rules":[{"host":"*","headers":{"Cookie":"sid=secret"}}]}`))
-	reqWild.SetPathValue("id", "55")
-	recWild := httptest.NewRecorder()
-	s.updateTaskProxyHeaders(recWild, reqWild)
-	if recWild.Code != 400 {
-		t.Fatalf("expected 400 for wildcard host, got %d", recWild.Code)
+	// Reject wildcard, broad TLD suffixes, and host:port/path inputs to prevent credential leakage.
+	for _, badHost := range []string{"*", ".", ".com", "portal.corp.local:8443", "portal.corp.local/api"} {
+		reqBad := httptest.NewRequest("PUT", "/api/tasks/55/proxy-headers", strings.NewReader(`{"rules":[{"host":"`+badHost+`","headers":{"Cookie":"sid=secret"}}]}`))
+		reqBad.SetPathValue("id", "55")
+		recBad := httptest.NewRecorder()
+		s.updateTaskProxyHeaders(recBad, reqBad)
+		if recBad.Code != 400 {
+			t.Fatalf("expected 400 for invalid host %q, got %d", badHost, recBad.Code)
+		}
 	}
 
 	// Reject out-of-fence host.
@@ -78,5 +80,25 @@ func TestTaskProxyHeaderRulesIsolationAndFence(t *testing.T) {
 	tr.ApplyHostHeadersForTest(flowOther)
 	if flowOther.Request.Header.Get("Authorization") != "" {
 		t.Fatalf("credential leaked to unmatched host: %q", flowOther.Request.Header.Get("Authorization"))
+	}
+
+	// Merge a second host rule without overwriting portal.corp.local.
+	reqMerge := httptest.NewRequest("PUT", "/api/tasks/55/proxy-headers", strings.NewReader(`{"merge":true,"rules":[{"host":"api.corp.local","headers":{"Cookie":"sid=api-secret"},"overwrite":true}]}`))
+	reqMerge.SetPathValue("id", "55")
+	recMerge := httptest.NewRecorder()
+	s.updateTaskProxyHeaders(recMerge, reqMerge)
+	if recMerge.Code != 200 || !strings.Contains(recMerge.Body.String(), `"rule_count":2`) {
+		t.Fatalf("expected 200 with rule_count=2 on merge, got %d (%s)", recMerge.Code, recMerge.Body.String())
+	}
+	flowPortal := &mproxy.Flow{Request: &mproxy.Request{URL: uMatch, Header: http.Header{}}}
+	tr.ApplyHostHeadersForTest(flowPortal)
+	if flowPortal.Request.Header.Get("Authorization") != "Bearer intranet-token" {
+		t.Fatalf("merge overwrote prior host rule: %q", flowPortal.Request.Header.Get("Authorization"))
+	}
+	uAPI, _ := url.Parse("https://api.corp.local/v1/users")
+	flowAPI := &mproxy.Flow{Request: &mproxy.Request{URL: uAPI, Header: http.Header{}}}
+	tr.ApplyHostHeadersForTest(flowAPI)
+	if flowAPI.Request.Header.Get("Cookie") != "sid=api-secret" {
+		t.Fatalf("merged host rule not applied: %q", flowAPI.Request.Header.Get("Cookie"))
 	}
 }

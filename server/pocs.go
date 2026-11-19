@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Autumn-27/artex/db"
 	actool "github.com/Autumn-27/norma/tool"
@@ -155,6 +156,9 @@ func defaultIntranetPocs() []db.UpsertPocInput {
 
 // GET /api/pocs — admin JWT only.
 func (s *Server) listPocs(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdminJWT(w, r) {
+		return
+	}
 	if s.m == nil || s.m.pg == nil {
 		writeErr(w, 503, "database unavailable")
 		return
@@ -175,6 +179,9 @@ func (s *Server) listPocs(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/pocs — admin JWT only.
 func (s *Server) createPoc(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdminJWT(w, r) {
+		return
+	}
 	if s.m == nil || s.m.pg == nil {
 		writeErr(w, 503, "database unavailable")
 		return
@@ -206,6 +213,9 @@ func (s *Server) createPoc(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /api/pocs/{id} — admin JWT only.
 func (s *Server) deletePoc(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdminJWT(w, r) {
+		return
+	}
 	if s.m == nil || s.m.pg == nil {
 		writeErr(w, 503, "database unavailable")
 		return
@@ -422,6 +432,21 @@ func (s *Server) toolSearchPocs() actool.CoreTool {
 	)
 }
 
+func validatePocTarget(target string) error {
+	if target == "" {
+		return errors.New("target is required")
+	}
+	if strings.HasPrefix(target, "-") {
+		return fmt.Errorf("invalid target %q: leading '-' is not allowed", target)
+	}
+	for _, r := range target {
+		if unicode.IsSpace(r) || r < 0x20 || r == 0x7f {
+			return fmt.Errorf("invalid target %q: whitespace or control characters are not allowed", target)
+		}
+	}
+	return nil
+}
+
 func (s *Server) toolRunPoc() actool.CoreTool {
 	return wrTool(
 		"run_poc",
@@ -456,8 +481,8 @@ func (s *Server) toolRunPoc() actool.CoreTool {
 			p.InlineKind = strings.ToLower(strings.TrimSpace(p.InlineKind))
 			p.OOBToken = strings.TrimSpace(p.OOBToken)
 
-			if p.Target == "" {
-				return actool.Errorf("target is required"), nil
+			if err := validatePocTarget(p.Target); err != nil {
+				return actool.Errorf(err.Error()), nil
 			}
 			hasInline := strings.TrimSpace(p.InlineContent) != ""
 			modeCount := 0
@@ -631,6 +656,10 @@ func (s *Server) toolSavePoc() actool.CoreTool {
 			if err := json.Unmarshal(in, &req); err != nil {
 				return actool.Errorf(err.Error()), nil
 			}
+			req.Name = strings.TrimSpace(req.Name)
+			if existing, err := s.m.pg.GetPocByRef(req.Name); err == nil && existing != nil && existing.CreatedBy != "agent" {
+				return actool.Errorf(fmt.Sprintf("cannot overwrite non-agent PoC %q (owned by %s); choose a new name", existing.Name, existing.CreatedBy)), nil
+			}
 			req.CreatedBy = "agent"
 			rec, created, err := s.m.pg.UpsertPoc(req)
 			if err != nil {
@@ -782,8 +811,8 @@ func (s *Server) toolRunInfraBaseline() actool.CoreTool {
 				return actool.Errorf(err.Error()), nil
 			}
 			p.Target = strings.TrimSpace(p.Target)
-			if p.Target == "" {
-				return actool.Errorf("target is required"), nil
+			if err := validatePocTarget(p.Target); err != nil {
+				return actool.Errorf(err.Error()), nil
 			}
 			t := s.m.ResolveTask(strings.TrimSpace(p.TaskID))
 			if t == nil {

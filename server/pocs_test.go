@@ -82,6 +82,22 @@ func TestSearchPocsOfflineTemplatesAndFence(t *testing.T) {
 		t.Fatalf("expected electronic fence block, got: %+v", resBlocked)
 	}
 
+	// Flag/whitespace injection in target must be rejected before fence/exec.
+	for _, badTarget := range []string{"-u http://10.10.1.5", "http://10.10.1.5 -o /tmp/out", "http://10.10.1.5\n--help"} {
+		badPayload, _ := json.Marshal(map[string]any{
+			"task_id":       "99",
+			"target":        badTarget,
+			"template_path": "http/cves/2024/CVE-2024-9999.yaml",
+		})
+		resBad, err := runTool.Call(context.Background(), badPayload, nil)
+		if err != nil {
+			t.Fatalf("run_poc bad target %q error: %v", badTarget, err)
+		}
+		if !resBad.IsError {
+			t.Fatalf("expected invalid target rejection for %q, got: %+v", badTarget, resBad)
+		}
+	}
+
 	// Path traversal in template_path must be rejected.
 	resTrav, err := runTool.Call(context.Background(), json.RawMessage(`{"task_id":"99","target":"http://10.10.1.5:8080","template_path":"../../etc/passwd"}`), nil)
 	if err != nil {

@@ -188,19 +188,27 @@ type HostHeaderRule struct {
 	Overwrite bool              `json:"overwrite"`
 }
 
-// SetTaskHostHeaderRules replaces the header-injection rules owned by taskID.
-func (t *Traffic) SetTaskHostHeaderRules(taskID string, rules []HostHeaderRule) {
-	t.hostHeadersMu.Lock()
-	defer t.hostHeadersMu.Unlock()
-	kept := make([]HostHeaderRule, 0, len(t.hostHeaders)+len(rules))
-	for _, r := range t.hostHeaders {
-		if r.TaskID != taskID {
-			kept = append(kept, r)
-		}
+// IsValidProxyHeaderHost validates a host or leading-dot domain suffix for proxy
+// header injection. It rejects empty strings, wildcards, schemes/ports/paths,
+// whitespace, and overly broad single-label suffixes like "." or ".com".
+func IsValidProxyHeaderHost(host string) bool {
+	h := strings.ToLower(strings.TrimSpace(host))
+	if h == "" || strings.ContainsAny(h, "*:/\\ \t\r\n") || strings.Contains(h, "..") || strings.HasSuffix(h, ".") {
+		return false
 	}
+	if strings.HasPrefix(h, ".") {
+		suffix := strings.TrimPrefix(h, ".")
+		// Require at least two labels after the leading dot (e.g. ".corp.local").
+		return strings.Contains(suffix, ".")
+	}
+	return true
+}
+
+func sanitizeHostHeaderRules(taskID string, rules []HostHeaderRule) []HostHeaderRule {
+	out := make([]HostHeaderRule, 0, len(rules))
 	for _, r := range rules {
 		h := strings.ToLower(strings.TrimSpace(r.Host))
-		if h == "" || h == "*" || strings.Contains(h, "*") || len(r.Headers) == 0 {
+		if !IsValidProxyHeaderHost(h) || len(r.Headers) == 0 {
 			continue
 		}
 		hdrs := make(map[string]string, len(r.Headers))
@@ -211,7 +219,7 @@ func (t *Traffic) SetTaskHostHeaderRules(taskID string, rules []HostHeaderRule) 
 			}
 		}
 		if len(hdrs) > 0 {
-			kept = append(kept, HostHeaderRule{
+			out = append(out, HostHeaderRule{
 				TaskID:    taskID,
 				Host:      h,
 				Headers:   hdrs,
@@ -219,7 +227,56 @@ func (t *Traffic) SetTaskHostHeaderRules(taskID string, rules []HostHeaderRule) 
 			})
 		}
 	}
+	return out
+}
+
+// SetTaskHostHeaderRules replaces the header-injection rules owned by taskID.
+func (t *Traffic) SetTaskHostHeaderRules(taskID string, rules []HostHeaderRule) {
+	t.hostHeadersMu.Lock()
+	defer t.hostHeadersMu.Unlock()
+	kept := make([]HostHeaderRule, 0, len(t.hostHeaders)+len(rules))
+	for _, r := range t.hostHeaders {
+		if r.TaskID != taskID {
+			kept = append(kept, r)
+		}
+	}
+	kept = append(kept, sanitizeHostHeaderRules(taskID, rules)...)
 	t.hostHeaders = kept
+}
+
+// UpsertTaskHostHeaderRules merges incoming host rules into taskID's existing rules
+// (updating matching hosts' headers in place without wiping unrelated hosts) and
+// returns the total active rule count for taskID.
+func (t *Traffic) UpsertTaskHostHeaderRules(taskID string, rules []HostHeaderRule) int {
+	incoming := sanitizeHostHeaderRules(taskID, rules)
+	t.hostHeadersMu.Lock()
+	defer t.hostHeadersMu.Unlock()
+	for _, inc := range incoming {
+		merged := false
+		for i := range t.hostHeaders {
+			if t.hostHeaders[i].TaskID == taskID && t.hostHeaders[i].Host == inc.Host {
+				if t.hostHeaders[i].Headers == nil {
+					t.hostHeaders[i].Headers = make(map[string]string, len(inc.Headers))
+				}
+				for k, v := range inc.Headers {
+					t.hostHeaders[i].Headers[k] = v
+				}
+				t.hostHeaders[i].Overwrite = inc.Overwrite
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			t.hostHeaders = append(t.hostHeaders, inc)
+		}
+	}
+	count := 0
+	for _, r := range t.hostHeaders {
+		if r.TaskID == taskID {
+			count++
+		}
+	}
+	return count
 }
 
 // ListTaskHostHeaderRules returns the active header-injection rules for taskID.
