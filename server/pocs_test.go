@@ -111,11 +111,11 @@ func TestSearchPocsOfflineTemplatesAndFence(t *testing.T) {
 
 func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 	pocs := defaultIntranetPocs()
-	if len(pocs) < 45 {
-		t.Fatalf("expected at least 45 built-in intranet/infra PoCs, got %d", len(pocs))
+	if len(pocs) < 60 {
+		t.Fatalf("expected at least 60 built-in intranet/infra PoCs, got %d", len(pocs))
 	}
 	seen := map[string]bool{}
-	var redisScript, memcachedScript, rsyncScript, printScript, zkScript string
+	var redisScript, memcachedScript, rsyncScript, printScript, zkScript, pgScript string
 	for _, p := range pocs {
 		if p.Name == "" || strings.TrimSpace(p.Content) == "" {
 			t.Fatalf("invalid default poc entry: %+v", p)
@@ -138,6 +138,8 @@ func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 			printScript = p.Content
 		case "infra-zookeeper-unauth-4lw":
 			zkScript = p.Content
+		case "infra-postgresql-trust-auth":
+			pgScript = p.Content
 		}
 	}
 	for _, required := range []string{
@@ -174,6 +176,21 @@ func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 		"infra-minio-console-metrics",
 		"infra-nginx-apache-status-leak",
 		"infra-tls-weak-protocol-cipher",
+		"infra-postgresql-trust-auth",
+		"infra-mysql-empty-root-probe",
+		"infra-redis-sentinel-config-audit",
+		"infra-clickhouse-unauth-http",
+		"infra-couchdb-unauth-admin",
+		"infra-influxdb-unauth-query",
+		"infra-openstack-keystone-api",
+		"infra-vmware-vcenter-esxi-exposure",
+		"infra-portainer-rancher-exposure",
+		"infra-hashicorp-vault-status",
+		"infra-k8s-apiserver-anon-access",
+		"infra-zabbix-unauth-exposure",
+		"infra-tomcat-manager-exposure",
+		"infra-weblogic-console-exposure",
+		"infra-apollo-sentinel-unauth",
 	} {
 		if !seen[required] {
 			t.Fatalf("missing required infra PoC %q", required)
@@ -315,5 +332,32 @@ func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 	zkRes, err := runTool.Call(context.Background(), zkPayload, nil)
 	if err != nil || zkRes.IsError || !strings.Contains(resultText(zkRes), "imok") {
 		t.Fatalf("zookeeper probe failed: err=%v res=%+v", err, zkRes)
+	}
+
+	// Execute PostgreSQL trust auth probe against a local mock TCP listener returning AuthenticationOk ('R', len=8, auth=0).
+	pgLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pgLn.Close()
+	go func() {
+		conn, err := pgLn.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+		_, _ = conn.Read(buf)
+		_, _ = conn.Write([]byte{'R', 0, 0, 0, 8, 0, 0, 0, 0})
+	}()
+	pgPayload, _ := json.Marshal(map[string]any{
+		"task_id":        "101",
+		"target":         pgLn.Addr().String(),
+		"inline_kind":    "python_script",
+		"inline_content": pgScript,
+	})
+	pgRes, err := runTool.Call(context.Background(), pgPayload, nil)
+	if err != nil || pgRes.IsError || !strings.Contains(resultText(pgRes), "CONFIRMED PostgreSQL trust") {
+		t.Fatalf("postgresql trust probe failed: err=%v res=%+v", err, pgRes)
 	}
 }

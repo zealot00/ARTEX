@@ -1334,7 +1334,8 @@ except Exception as e:
 `,
 		},
 	}
-	return append(base, extraInfraPocs()...)
+	out := append(base, extraInfraPocs()...)
+	return append(out, cloudAndDBInfraPocs()...)
 }
 
 func searchOfflineNucleiTemplates(root, query, tag string, limit int) []string {
