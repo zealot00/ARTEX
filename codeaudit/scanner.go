@@ -457,3 +457,137 @@ func clipLine(s string, max int) string {
 	}
 	return t[:max] + "..."
 }
+
+// AuthGapHit flags a discovered route handler lacking explicit local auth annotations
+// or ownership checks within its surrounding code window.
+type AuthGapHit struct {
+	Framework       string `json:"framework"`
+	File            string `json:"file"`
+	Line            int    `json:"line"`
+	RouteSnippet    string `json:"route_snippet"`
+	HasLocalAuth    bool   `json:"has_local_auth_guard"`
+	HasOwnershipKey bool   `json:"has_ownership_check"`
+	RiskNote        string `json:"risk_note"`
+}
+
+var (
+	localAuthGuardRe = regexp.MustCompile(`(?i)(?:@PreAuthorize|@Secured|@RolesAllowed|@RequiresPermissions|@RequiresAuthentication|@login_required|requireAuth|requireAdminJWT|Depends\s*\([^)]*(?:auth|user|token)|checkAuth|verifyToken|currentUser)`)
+	ownershipKeyRe   = regexp.MustCompile(`(?i)(?:tenant_id|tenantId|user_id|userId|owner_id|ownerId|currentUser|getUserId|Principal|Authentication)`)
+	stateChangingRe  = regexp.MustCompile(`(?i)(?:Post|Put|Delete|Patch|admin|manage|export|download|delete|update|reset|transfer|approve|order|user)`)
+)
+
+// AuditAuthGaps inspects route handlers and checks a +/-10 line window around each
+// route for explicit auth annotations/guards and user/tenant ownership references.
+func AuditAuthGaps(root string, limit int) ([]AuthGapHit, error) {
+	if limit <= 0 || limit > maxResults {
+		limit = maxResults
+	}
+	var hits []AuthGapHit
+	err := walkSourceFiles(root, func(rel, abs string) error {
+		data, err := os.ReadFile(abs)
+		if err != nil {
+			return nil
+		}
+		lines := strings.Split(string(data), "\n")
+		fileHasClassAuth := false
+		for i := 0; i < len(lines) && i < 40; i++ {
+			if localAuthGuardRe.MatchString(lines[i]) {
+				fileHasClassAuth = true
+				break
+			}
+		}
+		for idx, line := range lines {
+			var fw string
+			for _, r := range entrypointRules {
+				if r.kind == "route" && r.re.MatchString(line) {
+					fw = r.framework
+					break
+				}
+			}
+			if fw == "" {
+				continue
+			}
+			start := idx - 6
+			if start < 0 {
+				start = 0
+			}
+			end := idx + 15
+			if end > len(lines) {
+				end = len(lines)
+			}
+			window := strings.Join(lines[start:end], "\n")
+			hasAuth := fileHasClassAuth || localAuthGuardRe.MatchString(window)
+			hasOwner := ownershipKeyRe.MatchString(window)
+			if !hasAuth || (!hasOwner && stateChangingRe.MatchString(line)) {
+				note := "No local auth guard detected near route; verify global filter/whitelist coverage"
+				if hasAuth && !hasOwner {
+					note = "State-changing or sensitive route without explicit user/tenant ownership reference; check for IDOR/BOLA"
+				}
+				hits = append(hits, AuthGapHit{
+					Framework:       fw,
+					File:            rel,
+					Line:            idx + 1,
+					RouteSnippet:    clipLine(line, 180),
+					HasLocalAuth:    hasAuth,
+					HasOwnershipKey: hasOwner,
+					RiskNote:        note,
+				})
+				if len(hits) >= limit {
+					return fs.SkipAll
+				}
+			}
+		}
+		return nil
+	})
+	if err == fs.SkipAll {
+		err = nil
+	}
+	return hits, err
+}
+
+// ReadSourceContext returns numbered lines around centerLine (+/- radius, capped at 80 lines)
+// from a file strictly inside allowedRoot.
+func ReadSourceContext(allowedRoot, relFile string, centerLine, radius int) (string, int, int, error) {
+	full, err := SafeResolveDir(allowedRoot, relFile)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	info, err := os.Stat(full)
+	if err != nil || info.IsDir() {
+		return "", 0, 0, fmt.Errorf("file not found: %s", relFile)
+	}
+	if info.Size() > maxFileBytes {
+		return "", 0, 0, fmt.Errorf("file exceeds max readable size (%d bytes)", maxFileBytes)
+	}
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	lines := strings.Split(string(data), "\n")
+	if centerLine < 1 {
+		centerLine = 1
+	}
+	if radius <= 0 {
+		radius = 25
+	}
+	if radius > 40 {
+		radius = 40
+	}
+	start := centerLine - radius
+	if start < 1 {
+		start = 1
+	}
+	end := centerLine + radius
+	if end > len(lines) {
+		end = len(lines)
+	}
+	var sb strings.Builder
+	for i := start; i <= end; i++ {
+		marker := "  "
+		if i == centerLine {
+			marker = ">>"
+		}
+		fmt.Fprintf(&sb, "%s %4d | %s\n", marker, i, lines[i-1])
+	}
+	return sb.String(), start, end, nil
+}

@@ -17,6 +17,13 @@ import (
 	"github.com/Autumn-27/norma/transcript"
 )
 
+// PlannerRuntimeContext, when wired by the server, returns live task-level
+// posture (electronic fence, MLPS pending checks, open depth sessions,
+// workspace source-code inventory, and loaded PoC/wordlist counts) so the
+// planner can orchestrate compliance, lateral, and white-box code-audit waves
+// without flying blind.
+var PlannerRuntimeContext func(taskID int64, taskDir string) string
+
 // Planner is the event-driven LLM planner (docs §4.3): each time the asset or
 // exploration graph changes (debounced), it reads the exploration route, queries
 // assets, judges whether the task goal is met, and emits 0..N exploration intents
@@ -515,6 +522,11 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	}
 	// This task's work dir <workDir>/tasks/<taskID>; create it first.
 	taskDir := ensureRunDir(p.workDir, taskID, 0)
+	if PlannerRuntimeContext != nil {
+		if extra := strings.TrimSpace(PlannerRuntimeContext(taskID, taskDir)); extra != "" {
+			situational += "\n\n" + extra
+		}
+	}
 	ctx = intercept.WithReviewContext(ctx, taskDir, intercept.ReviewBackground{})
 	sysBody := plannerSystem(goal, p.workDir, taskDir) + p.lessonsBlock
 	constraints := ""

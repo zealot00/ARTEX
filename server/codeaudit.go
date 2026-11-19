@@ -16,7 +16,9 @@ func (s *Server) codeAuditTools() []actool.CoreTool {
 	return []actool.CoreTool{
 		s.toolCodeMapEntrypoints(),
 		s.toolCodeScanSinks(),
+		s.toolCodeAuditAuthGaps(),
 		s.toolCodeTraceSymbol(),
+		s.toolCodeReadContext(),
 		s.toolCodeAuditDeps(),
 	}
 }
@@ -186,6 +188,78 @@ func (s *Server) toolCodeAuditDeps() actool.CoreTool {
 				manifests = []string{}
 			}
 			return jsonResult(map[string]any{"manifests": manifests, "advisories": advs})
+		},
+	)
+}
+
+func (s *Server) toolCodeAuditAuthGaps() actool.CoreTool {
+	return roTool(
+		"code_audit_auth_gaps",
+		"Cross-checks discovered route handlers against surrounding +/-15 line windows for explicit auth annotations/guards and user/tenant ownership checks, flagging unguarded routes and potential IDOR/BOLA handlers.",
+		objSchema(map[string]any{
+			"task_id": strParam("Task ID (numeric string)"),
+			"path":    strParam("Relative directory inside the task workspace (default '.')"),
+			"limit":   map[string]any{"type": "integer", "description": "Max hits to return (default 80, max 120)"},
+		}, "task_id"),
+		func(ctx context.Context, in json.RawMessage) (actool.Result, error) {
+			var p struct {
+				TaskID string `json:"task_id"`
+				Path   string `json:"path"`
+				Limit  int    `json:"limit"`
+			}
+			if err := json.Unmarshal(in, &p); err != nil {
+				return actool.Errorf(err.Error()), nil
+			}
+			dir, err := s.resolveTaskAuditDir(p.TaskID, p.Path)
+			if err != nil {
+				return actool.Errorf(err.Error()), nil
+			}
+			hits, err := codeaudit.AuditAuthGaps(dir, p.Limit)
+			if err != nil {
+				return actool.Errorf(err.Error()), nil
+			}
+			if hits == nil {
+				hits = []codeaudit.AuthGapHit{}
+			}
+			return jsonResult(map[string]any{"count": len(hits), "auth_gaps": hits})
+		},
+	)
+}
+
+func (s *Server) toolCodeReadContext() actool.CoreTool {
+	return roTool(
+		"code_read_context",
+		"Read numbered source code lines (+/- radius around a target line) from a file strictly inside the task workspace to inspect full handler/sanitizer implementations after code_scan_sinks or code_audit_auth_gaps.",
+		objSchema(map[string]any{
+			"task_id": strParam("Task ID (numeric string)"),
+			"file":    strParam("Relative file path inside the task workspace"),
+			"line":    map[string]any{"type": "integer", "description": "1-based center line number"},
+			"radius":  map[string]any{"type": "integer", "description": "Lines before and after center line (default 25, max 40)"},
+		}, "task_id", "file", "line"),
+		func(ctx context.Context, in json.RawMessage) (actool.Result, error) {
+			var p struct {
+				TaskID string `json:"task_id"`
+				File   string `json:"file"`
+				Line   int    `json:"line"`
+				Radius int    `json:"radius"`
+			}
+			if err := json.Unmarshal(in, &p); err != nil {
+				return actool.Errorf(err.Error()), nil
+			}
+			root, err := s.resolveTaskAuditDir(p.TaskID, ".")
+			if err != nil {
+				return actool.Errorf(err.Error()), nil
+			}
+			snippet, startLine, endLine, err := codeaudit.ReadSourceContext(root, p.File, p.Line, p.Radius)
+			if err != nil {
+				return actool.Errorf(err.Error()), nil
+			}
+			return jsonResult(map[string]any{
+				"file":       p.File,
+				"start_line": startLine,
+				"end_line":   endLine,
+				"content":    snippet,
+			})
 		},
 	)
 }

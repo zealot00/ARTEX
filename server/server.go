@@ -202,6 +202,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			go s.recordProxyOutbound(host, port, scheme, method, rawURL)
 		})
 	}
+	agent.PlannerRuntimeContext = s.buildPlannerRuntimeContext
 	if s.m != nil && s.sessMgr != nil {
 		s.m.onTaskEnd = func(taskID string) {
 			s.sessMgr.CloseTask(taskID)

@@ -231,6 +231,7 @@ func (s *Server) pocTools() []actool.CoreTool {
 	return []actool.CoreTool{
 		s.toolSearchPocs(),
 		s.toolRunPoc(),
+		s.toolRunInfraBaseline(),
 		s.toolSavePoc(),
 	}
 }
@@ -670,4 +671,234 @@ func execNucleiTemplate(ctx context.Context, tplPath, target string, prodSafe bo
 		"output":           outStr,
 		"exploit_guidance": guidance,
 	})
+}
+
+var portToInfraTags = map[int][]string{
+	21:    {"ftp"},
+	22:    {"ssh"},
+	25:    {"smtp"},
+	53:    {"dns"},
+	123:   {"ntp"},
+	161:   {"snmp"},
+	389:   {"ldap"},
+	443:   {"tls"},
+	445:   {"samba"},
+	587:   {"smtp"},
+	631:   {"print"},
+	636:   {"ldap", "tls"},
+	873:   {"rsync"},
+	2049:  {"nfs"},
+	2181:  {"zookeeper"},
+	2375:  {"docker"},
+	2379:  {"etcd"},
+	3306:  {"mysql"},
+	4646:  {"nomad"},
+	5000:  {"openstack", "docker"},
+	5432:  {"postgresql"},
+	5984:  {"couchdb"},
+	6379:  {"redis"},
+	6443:  {"k8s", "apiserver"},
+	7474:  {"neo4j"},
+	8001:  {"kong"},
+	8086:  {"influxdb"},
+	8088:  {"hadoop"},
+	8123:  {"clickhouse"},
+	8161:  {"activemq"},
+	8200:  {"vault"},
+	8848:  {"nacos"},
+	9000:  {"minio", "sonarqube"},
+	9100:  {"print"},
+	9180:  {"apisix"},
+	9200:  {"elasticsearch"},
+	9870:  {"hadoop"},
+	10250: {"kubelet"},
+	10255: {"kubelet"},
+	11211: {"memcached"},
+	15672: {"rabbitmq"},
+	26379: {"sentinel"},
+	27017: {"mongodb"},
+}
+
+func matchBaselinePocs(all []db.UpsertPocInput, ports []int, techs []string, maxCount int) []db.UpsertPocInput {
+	wantTags := map[string]bool{}
+	for _, port := range ports {
+		for _, tg := range portToInfraTags[port] {
+			wantTags[tg] = true
+		}
+	}
+	for _, tc := range techs {
+		if v := strings.ToLower(strings.TrimSpace(tc)); v != "" {
+			wantTags[v] = true
+		}
+	}
+	if len(wantTags) == 0 {
+		return nil
+	}
+	var matched []db.UpsertPocInput
+	seen := map[string]bool{}
+	for _, p := range all {
+		if seen[p.Name] {
+			continue
+		}
+		hay := strings.ToLower(p.Name + "," + p.Tags)
+		hit := false
+		for tg := range wantTags {
+			if strings.Contains(hay, tg) {
+				hit = true
+				break
+			}
+		}
+		if hit {
+			seen[p.Name] = true
+			matched = append(matched, p)
+			if len(matched) >= maxCount {
+				break
+			}
+		}
+	}
+	return matched
+}
+
+func (s *Server) toolRunInfraBaseline() actool.CoreTool {
+	return wrTool(
+		"run_infra_baseline",
+		"Port- and fingerprint-driven batch PoC runner: automatically maps open ports (e.g. [22,445,5432,6379,6443,10250,2379]) and detected technologies (e.g. ['spring','nacos','k8s','samba']) to matching PoCs in ./pocs/, executes them under electronic fence and prod_safe_mode caps, and returns a consolidated pass/fail audit summary.",
+		objSchema(map[string]any{
+			"task_id":  strParam("Task ID (numeric string)"),
+			"target":   strParam("Authorized target host/IP or base URL (e.g. '10.10.1.5' or 'http://10.10.1.5:8080')"),
+			"ports":    map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Optional list of open ports discovered on target"},
+			"techs":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional list of technology/service tags (e.g. 'spring', 'k8s', 'samba', 'redis')"},
+			"max_pocs": map[string]any{"type": "integer", "description": "Maximum PoCs to run in one batch (default 8, max 12; capped at 6 in prod_safe_mode)"},
+		}, "task_id", "target"),
+		func(ctx context.Context, in json.RawMessage) (actool.Result, error) {
+			var p struct {
+				TaskID  string   `json:"task_id"`
+				Target  string   `json:"target"`
+				Ports   []int    `json:"ports"`
+				Techs   []string `json:"techs"`
+				MaxPocs int      `json:"max_pocs"`
+			}
+			if err := json.Unmarshal(in, &p); err != nil {
+				return actool.Errorf(err.Error()), nil
+			}
+			p.Target = strings.TrimSpace(p.Target)
+			if p.Target == "" {
+				return actool.Errorf("target is required"), nil
+			}
+			t := s.m.ResolveTask(strings.TrimSpace(p.TaskID))
+			if t == nil {
+				return actool.Errorf("task not found"), nil
+			}
+			if t.Guard != nil {
+				probeInput, _ := json.Marshal(map[string]string{
+					"command": fmt.Sprintf("nuclei -u %s", p.Target),
+				})
+				if blocked, reason := t.Guard.CheckFence("Bash", probeInput); blocked {
+					return actool.Errorf(fmt.Sprintf("electronic fence blocked run_infra_baseline: %s", reason)), nil
+				}
+			}
+
+			limit := p.MaxPocs
+			if limit <= 0 {
+				limit = 8
+			}
+			capLimit := 12
+			if t.ProdSafeMode {
+				capLimit = 6
+			}
+			if limit > capLimit {
+				limit = capLimit
+			}
+
+			candidates := matchBaselinePocs(loadPocsFromDir(pocsDir()), p.Ports, p.Techs, limit)
+			if len(candidates) == 0 {
+				return jsonResult(map[string]any{
+					"target":        p.Target,
+					"executed":      0,
+					"matched_count": 0,
+					"results":       []any{},
+					"note":          "No matching PoCs found for the provided ports/techs; call search_pocs or author an inline PoC via run_poc.",
+				})
+			}
+
+			s.recordTaskOutbound(t, "infra_baseline", "mixed", p.Target, "BASELINE", "Automated port/tech PoC baseline")
+			tmpDir, err := os.MkdirTemp("", "artex-baseline-*")
+			if err != nil {
+				return actool.Errorf(fmt.Sprintf("create temp dir: %v", err)), nil
+			}
+			defer os.RemoveAll(tmpDir)
+
+			type itemSummary struct {
+				Name     string `json:"name"`
+				Kind     string `json:"kind"`
+				Severity string `json:"severity"`
+				Matched  bool   `json:"matched"`
+				Output   string `json:"output,omitempty"`
+				Guidance string `json:"exploit_guidance,omitempty"`
+				Error    string `json:"error,omitempty"`
+			}
+			var results []itemSummary
+			matchedCount := 0
+
+			for i, poc := range candidates {
+				runCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
+				var res actool.Result
+				var runErr error
+				switch poc.Kind {
+				case db.PocKindPythonScript:
+					pyPath := filepath.Join(tmpDir, fmt.Sprintf("poc_%d.py", i))
+					_ = os.WriteFile(pyPath, []byte(poc.Content), 0o600)
+					res, runErr = execPythonPoc(runCtx, pyPath, p.Target, "", "", poc.Name, poc.CVE, poc.ExploitGuidance)
+				case db.PocKindNucleiYAML:
+					yamlPath := filepath.Join(tmpDir, fmt.Sprintf("poc_%d.yaml", i))
+					_ = os.WriteFile(yamlPath, []byte(poc.Content), 0o600)
+					res, runErr = execNucleiTemplate(runCtx, yamlPath, p.Target, t.ProdSafeMode, "", poc.Name, poc.ExploitGuidance)
+				}
+				cancel()
+
+				item := itemSummary{
+					Name:     poc.Name,
+					Kind:     poc.Kind,
+					Severity: poc.Severity,
+					Guidance: poc.ExploitGuidance,
+				}
+				if runErr != nil {
+					item.Error = runErr.Error()
+				} else if res.IsError {
+					var sb strings.Builder
+					for _, b := range res.Content {
+						sb.WriteString(b.Text)
+					}
+					item.Error = sb.String()
+				} else {
+					var parsed struct {
+						Matched bool   `json:"matched"`
+						Output  string `json:"output"`
+					}
+					var sb strings.Builder
+					for _, b := range res.Content {
+						sb.WriteString(b.Text)
+					}
+					_ = json.Unmarshal([]byte(sb.String()), &parsed)
+					item.Matched = parsed.Matched
+					if len(parsed.Output) > 1024 {
+						item.Output = parsed.Output[:1024] + "...(truncated)"
+					} else {
+						item.Output = parsed.Output
+					}
+					if item.Matched {
+						matchedCount++
+					}
+				}
+				results = append(results, item)
+			}
+
+			return jsonResult(map[string]any{
+				"target":        p.Target,
+				"executed":      len(results),
+				"matched_count": matchedCount,
+				"results":       results,
+			})
+		},
+	)
 }
