@@ -1,0 +1,24 @@
+# artex-name: infra-hashicorp-vault-status
+# artex-severity: medium
+# artex-tags: vault,hashicorp,secrets,cloud,infra,intranet
+# artex-desc: Detect exposed HashiCorp Vault (:8200 /v1/sys/health, /v1/sys/seal-status) revealing version, cluster name, and seal status.
+# artex-guidance: Restrict Vault API to authorized workload subnets and audit auth methods for overly permissive tokens/roles.
+id: infra-hashicorp-vault-status
+info:
+  name: HashiCorp Vault API & Seal Status Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/v1/sys/health"
+      - "{{BaseURL}}/v1/sys/seal-status"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200, 429, 472, 473, 501, 503]
+      - type: word
+        words:
+          - '"sealed"'
+          - '"cluster_name"'
+        condition: and

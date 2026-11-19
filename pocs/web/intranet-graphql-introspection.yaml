@@ -1,0 +1,27 @@
+# artex-name: intranet-graphql-introspection
+# artex-severity: low
+# artex-tags: graphql,introspection,api,intranet
+# artex-desc: Detect GraphQL endpoints with introspection enabled to map internal schemas, queries, and mutations.
+# artex-guidance: Enumerate returned Query/Mutation types and test sensitive mutations/queries for IDOR and broken authorization.
+id: intranet-graphql-introspection
+info:
+  name: GraphQL Introspection Enabled
+  severity: low
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/graphql"
+      - "{{BaseURL}}/api/graphql"
+    headers:
+      Content-Type: application/json
+    body: '{"query":"{__schema{types{name}}}"}'
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"__schema"'
+          - '"types"'
+        condition: and

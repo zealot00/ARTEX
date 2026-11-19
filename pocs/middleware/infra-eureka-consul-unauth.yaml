@@ -1,0 +1,26 @@
+# artex-name: infra-eureka-consul-unauth
+# artex-severity: high
+# artex-tags: eureka,consul,spring,service-mesh,unauth,infra,intranet
+# artex-desc: Detect unauthenticated Spring Cloud Eureka (/eureka/apps) or HashiCorp Consul (/v1/agent/self, /v1/catalog/services) registries.
+# artex-guidance: Enumerate registered internal microservices and check if Consul KV store exposes secrets.
+id: infra-eureka-consul-unauth
+info:
+  name: Eureka / Consul Unauthenticated Service Registry Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/eureka/apps"
+      - "{{BaseURL}}/v1/agent/self"
+      - "{{BaseURL}}/v1/catalog/services"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "<applications>"
+          - '"Member"'
+          - '"consul"'
+        condition: or

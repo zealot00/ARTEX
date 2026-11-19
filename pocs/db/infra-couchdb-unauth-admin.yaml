@@ -1,0 +1,22 @@
+# artex-name: infra-couchdb-unauth-admin
+# artex-severity: critical
+# artex-tags: couchdb,database,unauth,infra,intranet
+# artex-desc: Detect unauthenticated Apache CouchDB (:5984 /_all_dbs) exposure.
+# artex-guidance: Disable Admin Party mode and configure require_valid_user = true.
+id: infra-couchdb-unauth-admin
+info:
+  name: Apache CouchDB Unauthenticated Database Listing
+  severity: critical
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/_all_dbs"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"_users"'
+          - '"_replicator"'
+        condition: or

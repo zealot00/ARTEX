@@ -1,0 +1,26 @@
+# artex-name: intranet-metrics-prometheus-exposure
+# artex-severity: medium
+# artex-tags: prometheus,metrics,grafana,exposure,intranet
+# artex-desc: Detect unauthenticated /metrics, Prometheus, or Grafana datasource/health endpoints.
+# artex-guidance: Review exposed /metrics or /api/datasources for internal service topology, versions, and potential backend targets.
+id: intranet-metrics-prometheus-exposure
+info:
+  name: Prometheus / Metrics / Grafana Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/metrics"
+      - "{{BaseURL}}/actuator/prometheus"
+      - "{{BaseURL}}/api/datasources"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "# HELP "
+          - "# TYPE "
+          - '"typeName"'
+        condition: or

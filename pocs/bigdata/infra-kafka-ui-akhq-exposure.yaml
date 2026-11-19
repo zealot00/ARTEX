@@ -1,0 +1,26 @@
+# artex-name: infra-kafka-ui-akhq-exposure
+# artex-severity: high
+# artex-tags: kafka,mq,bigdata,unauth,infra,intranet
+# artex-desc: Detect unauthenticated Kafka-UI, AKHQ, or Kafka-Manager (CMAK) web management consoles.
+# artex-guidance: Inspect exposed cluster/topic names only; enforce SSO/RBAC authentication on Kafka management UIs.
+id: infra-kafka-ui-akhq-exposure
+info:
+  name: Kafka UI / AKHQ / CMAK Unauthenticated Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/clusters"
+      - "{{BaseURL}}/ui/clusters"
+      - "{{BaseURL}}/api/me"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"brokerCount"'
+          - '"topicCount"'
+          - '"bootstrapServers"'
+        condition: or

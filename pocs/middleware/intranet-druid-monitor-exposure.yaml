@@ -1,0 +1,25 @@
+# artex-name: intranet-druid-monitor-exposure
+# artex-severity: medium
+# artex-tags: druid,java,monitor,unauth,intranet
+# artex-desc: Detect unauthenticated Alibaba Druid SQL/Session monitor console.
+# artex-guidance: Inspect exposed SQL queries, datasource URIs, and active session IDs from /druid/websession.json or /druid/sql.json.
+id: intranet-druid-monitor-exposure
+info:
+  name: Alibaba Druid Monitor Unauthenticated Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/druid/index.html"
+      - "{{BaseURL}}/druid/sql.html"
+      - "{{BaseURL}}/druid/basic.json"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "Druid Stat Index"
+          - '"ResultCode"'
+        condition: or

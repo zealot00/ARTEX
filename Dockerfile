@@ -221,6 +221,8 @@ COPY --from=build /out/artex /app/artex
 COPY start.sh /app/start.sh
 RUN chmod +x /app/artex /app/start.sh && mkdir -p /app/keys
 COPY skills/ /app/skills/
+COPY pocs/ /app/pocs/
+ENV ARTEX_POCS_DIR=/app/pocs
 # persistence points: data/ (SQLite, task files) and keys/ (jwt.key, via ARTEX_JWT_KEY_DIR)
 VOLUME ["/app/data", "/app/keys"]
 EXPOSE 8787 8788

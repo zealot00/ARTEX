@@ -1,0 +1,26 @@
+# artex-name: infra-k8s-kubelet-unauth
+# artex-severity: critical
+# artex-tags: kubernetes,k8s,kubelet,container,unauth,infra
+# artex-desc: Detect unauthenticated Kubelet read-only (:10255) or API (:10250) endpoints exposing Pod specs, env vars, and running containers.
+# artex-guidance: Verify exposed PodList/container metadata (read-only); check if anonymous-auth is enabled on :10250 and record under SYS-CONFIG / AUTH-ACCESS.
+id: infra-k8s-kubelet-unauth
+info:
+  name: Kubernetes Kubelet Unauthenticated Exposure
+  severity: critical
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/pods"
+      - "{{BaseURL}}/runningpods/"
+      - "{{BaseURL}}/stats/summary"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"kind":"PodList"'
+          - '"kind": "PodList"'
+          - '"nodeName"'
+        condition: or

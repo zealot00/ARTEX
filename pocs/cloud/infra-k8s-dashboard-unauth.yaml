@@ -1,0 +1,25 @@
+# artex-name: infra-k8s-dashboard-unauth
+# artex-severity: high
+# artex-tags: kubernetes,k8s,dashboard,unauth,infra
+# artex-desc: Detect unauthenticated Kubernetes Dashboard API access (e.g. skip-login or default ServiceAccount exposure).
+# artex-guidance: Verify whether /api/v1/namespace returns cluster namespaces without a Bearer token.
+id: infra-k8s-dashboard-unauth
+info:
+  name: Kubernetes Dashboard Unauthenticated Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/v1/namespace"
+      - "{{BaseURL}}/api/v1/pod/default"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"namespaces"'
+          - '"pods"'
+          - '"listMeta"'
+        condition: and

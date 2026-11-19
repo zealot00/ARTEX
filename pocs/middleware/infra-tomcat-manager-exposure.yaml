@@ -1,0 +1,24 @@
+# artex-name: infra-tomcat-manager-exposure
+# artex-severity: high
+# artex-tags: tomcat,java,middleware,manager,infra,intranet
+# artex-desc: Detect exposed Apache Tomcat Manager (/manager/html) or Host Manager (/host-manager/html) interfaces.
+# artex-guidance: Remove /manager and /host-manager in production or bind strictly to 127.0.0.1.
+id: infra-tomcat-manager-exposure
+info:
+  name: Apache Tomcat Manager Interface Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/manager/html"
+      - "{{BaseURL}}/host-manager/html"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200, 401]
+      - type: word
+        words:
+          - "Tomcat Manager Application"
+          - "Tomcat Host Manager Application"
+        condition: or

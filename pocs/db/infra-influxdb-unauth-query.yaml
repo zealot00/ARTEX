@@ -1,0 +1,22 @@
+# artex-name: infra-influxdb-unauth-query
+# artex-severity: high
+# artex-tags: influxdb,database,tsdb,unauth,infra,intranet
+# artex-desc: Detect unauthenticated InfluxDB (:8086) query API exposing SHOW DATABASES.
+# artex-guidance: Enable auth-enabled = true in influxdb.conf and bind to internal monitoring VLAN.
+id: infra-influxdb-unauth-query
+info:
+  name: InfluxDB Unauthenticated Query API
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/query?q=SHOW+DATABASES"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"results"'
+          - '"databases"'
+        condition: and

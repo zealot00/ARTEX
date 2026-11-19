@@ -49,9 +49,10 @@ services:
       # JWT signing key (jwt.key), kept out of data/, which the file manager browses.
       # Persisting it keeps users signed in across container rebuilds.
       - ./keys:/app/keys
-      # Mount skills/ from the project root into the container (overriding the image's built-in /app/skills);
-      # skill changes require no image rebuild — the container reads the host copy.
+      # Mount skills/ and pocs/ from the project root into the container;
+      # skill and PoC file changes require no image rebuild or container restart.
       - ./skills:/app/skills
+      - ./pocs:/app/pocs
     restart: unless-stopped
 
 volumes:

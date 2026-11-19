@@ -1,0 +1,24 @@
+# artex-name: infra-skywalking-pinpoint-unauth
+# artex-severity: medium
+# artex-tags: skywalking,pinpoint,apm,monitor,unauth,cicd,infra,intranet
+# artex-desc: Detect unauthenticated Apache SkyWalking GraphQL or Pinpoint APM dashboards exposing service topology.
+# artex-guidance: Place APM dashboards behind enterprise SSO/reverse-proxy auth.
+id: infra-skywalking-pinpoint-unauth
+info:
+  name: SkyWalking / Pinpoint APM Unauthenticated Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/applications.pinpoint"
+      - "{{BaseURL}}/graphql"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"applicationName"'
+          - '"serviceType"'
+        condition: and

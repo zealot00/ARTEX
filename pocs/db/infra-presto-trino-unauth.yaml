@@ -1,0 +1,24 @@
+# artex-name: infra-presto-trino-unauth
+# artex-severity: high
+# artex-tags: presto,trino,bigdata,database,unauth,infra,intranet
+# artex-desc: Detect unauthenticated Presto / Trino coordinator UI & info API (/v1/info, /v1/node).
+# artex-guidance: Enable TLS and password/OIDC authentication on Presto/Trino coordinators.
+id: infra-presto-trino-unauth
+info:
+  name: Presto / Trino Coordinator Unauthenticated Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/v1/info"
+      - "{{BaseURL}}/v1/node"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"nodeVersion"'
+          - '"coordinator"'
+        condition: and

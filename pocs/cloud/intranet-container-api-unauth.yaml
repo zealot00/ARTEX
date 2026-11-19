@@ -1,0 +1,26 @@
+# artex-name: intranet-container-api-unauth
+# artex-severity: critical
+# artex-tags: docker,kubernetes,k8s,container,unauth,intranet
+# artex-desc: Detect unauthenticated Docker Remote API (/version, /containers/json) or Kubernetes API (/api/v1/namespaces).
+# artex-guidance: Verify read-only cluster/container listing scope first; escalate via kubectl or skills/cloud-k8s-audit within authorized scope.
+id: intranet-container-api-unauth
+info:
+  name: Docker / Kubernetes Unauthenticated API Exposure
+  severity: critical
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/version"
+      - "{{BaseURL}}/containers/json"
+      - "{{BaseURL}}/api/v1/namespaces"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"ApiVersion"'
+          - '"Namespace"'
+          - '"ImageID"'
+        condition: or

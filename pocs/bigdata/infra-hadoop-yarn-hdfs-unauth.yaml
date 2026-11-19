@@ -1,0 +1,25 @@
+# artex-name: infra-hadoop-yarn-hdfs-unauth
+# artex-severity: critical
+# artex-tags: hadoop,yarn,hdfs,bigdata,unauth,infra,intranet
+# artex-desc: Detect unauthenticated Hadoop YARN ResourceManager (:8088) or HDFS NameNode (:9870) REST/Web UIs.
+# artex-guidance: Verify read-only cluster/node info via /ws/v1/cluster/info or /jmx; do not submit applications in production.
+id: infra-hadoop-yarn-hdfs-unauth
+info:
+  name: Hadoop YARN / HDFS Unauthenticated Exposure
+  severity: critical
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/ws/v1/cluster/info"
+      - "{{BaseURL}}/jmx?qry=Hadoop:service=NameNode,name=NameNodeInfo"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"clusterInfo"'
+          - '"hadoopVersion"'
+          - 'Hadoop:service=NameNode'
+        condition: or

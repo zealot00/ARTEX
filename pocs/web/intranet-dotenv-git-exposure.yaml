@@ -1,0 +1,25 @@
+# artex-name: intranet-dotenv-git-exposure
+# artex-severity: high
+# artex-tags: env,git,config,leak,intranet
+# artex-desc: Detect exposed .env or .git/config files leaking database credentials, API keys, or source repo metadata.
+# artex-guidance: Extract non-destructive credential proof from .env or .git/config and record valid secrets in task_credentials for downstream verification.
+id: intranet-dotenv-git-exposure
+info:
+  name: Exposed .env or .git/config
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.env"
+      - "{{BaseURL}}/.git/config"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "DB_PASSWORD"
+          - "APP_KEY"
+          - "[remote \"origin\"]"
+        condition: or

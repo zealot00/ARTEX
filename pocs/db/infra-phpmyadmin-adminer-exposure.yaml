@@ -1,0 +1,26 @@
+# artex-name: infra-phpmyadmin-adminer-exposure
+# artex-severity: medium
+# artex-tags: phpmyadmin,adminer,pgadmin,database,exposure,infra,intranet
+# artex-desc: Detect exposed database web admin panels (phpMyAdmin, Adminer, pgAdmin).
+# artex-guidance: Remove or restrict web DB admin tools to VPN/bastion hosts only.
+id: infra-phpmyadmin-adminer-exposure
+info:
+  name: phpMyAdmin / Adminer / pgAdmin Web Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/phpmyadmin/"
+      - "{{BaseURL}}/adminer.php"
+      - "{{BaseURL}}/login"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "phpMyAdmin"
+          - "Adminer"
+          - "pgAdmin 4"
+        condition: or

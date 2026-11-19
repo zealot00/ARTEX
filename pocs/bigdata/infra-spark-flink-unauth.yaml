@@ -1,0 +1,25 @@
+# artex-name: infra-spark-flink-unauth
+# artex-severity: high
+# artex-tags: spark,flink,bigdata,unauth,infra,intranet
+# artex-desc: Detect unauthenticated Apache Spark Master UI or Apache Flink Dashboard (/overview, /config).
+# artex-guidance: Verify read-only cluster overview (/overview, /jobs/overview); do not upload JARs or submit jobs.
+id: infra-spark-flink-unauth
+info:
+  name: Apache Spark / Flink Unauthenticated Dashboard
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/overview"
+      - "{{BaseURL}}/json/"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"flink-version"'
+          - '"taskmanagers"'
+          - '"aliveworkers"'
+        condition: or

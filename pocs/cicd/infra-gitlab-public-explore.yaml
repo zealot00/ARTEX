@@ -1,0 +1,24 @@
+# artex-name: infra-gitlab-public-explore
+# artex-severity: medium
+# artex-tags: gitlab,git,ci,exposure,infra,intranet
+# artex-desc: Detect internal GitLab instances exposing public project repositories or user directories without authentication.
+# artex-guidance: Review exposed internal repo names via /api/v4/projects for unintended source/secret visibility.
+id: infra-gitlab-public-explore
+info:
+  name: Internal GitLab Unauthenticated Public Projects Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/v4/projects?per_page=5"
+      - "{{BaseURL}}/api/v4/users?per_page=5"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"path_with_namespace"'
+          - '"http_url_to_repo"'
+        condition: and

@@ -106,7 +106,7 @@ docker compose up -d --build
     ```bash
     ./scripts/sync-nuclei-templates.sh
     ```
-- **开箱预置与自编沉淀**：系统启动会自动在 `pocs` 表预置 **60 项**企业内网与基础设施高频自测模板（覆盖 Web/中间件：Spring Actuator、Swagger/OpenAPI、`.env`/`.git`、GraphQL、Nacos、Druid、Eureka/Consul、Apollo/Sentinel、XXL-JOB、Tomcat Manager、WebLogic、MinIO、Nginx/Apache 状态页、Prometheus/Grafana、Zabbix、CORS、路径/代理头绕过、SSTI 基线、Blind SSRF OOB；数据库与大数据：PostgreSQL `trust` 无密认证、MySQL 空密码/Greeting、Redis 与 Redis Sentinel、MongoDB、ClickHouse、CouchDB、InfluxDB、Memcached、Elasticsearch、ZooKeeper、Kafka UI、Hadoop YARN/HDFS、Spark/Flink、RabbitMQ；云平台与基础服务：OpenStack Keystone/Glance/Horizon、VMware vCenter/ESXi、Portainer/Rancher、HashiCorp Vault、K8s API Server/Kubelet/etcd/Dashboard、Docker/Harbor Registry、Samba/SMB 空会话与签名/SMBv1、SSH 弱算法/口令认证、TLS 弱协议/套件、NTP Mode 6/7、CUPS/IPP/JetDirect 打印服务、GitLab、Nexus/Artifactory、SonarQube、Kibana、Jenkins、FTP 匿名、Rsync 匿名模块、NFS 导出、LDAP 匿名绑定、DNS AXFR 与 SNMP 默认团体名）；配合离线全量 `nuclei-templates` 与 Agent 现场编写/沉淀（`run_poc(inline_kind, inline_content)` + `save_poc`），形成完整监管自测覆盖。
+- **目录化热加载 PoC 库（`./pocs/`，共 75 项分类文件）**：所有预置与企业自定义 PoC 已全部从 Go 代码抽离至项目根目录 `./pocs/`（按 `web/`、`middleware/`、`db/`、`bigdata/`、`cloud/`、`cicd/`、`infra/` 分类存放 `.yaml` 与 `.py` 文件），并在 `docker-compose.yml` 中直接挂载 `./pocs:/app/pocs`。运维与安全团队新增或修改任何 PoC 文件**无需改 Go 代码、无需重编镜像、无需重启容器**，`search_pocs` 与 `run_poc` 会实时热加载发现（同时支持通过 `/system/settings` 界面上传至数据库，或由 Agent 验证后调用 `save_poc` 沉淀）。
 - **上传企业私有 PoC**（仅 Admin JWT 权限，通过 `POST /api/pocs`）：
   ```bash
   curl -X POST http://127.0.0.1:8787/api/pocs \

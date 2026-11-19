@@ -1,0 +1,24 @@
+# artex-name: infra-rocketmq-console-unauth
+# artex-severity: high
+# artex-tags: rocketmq,mq,unauth,middleware,infra,intranet
+# artex-desc: Detect unauthenticated Apache RocketMQ Dashboard/Console (/cluster/list.query, /topic/list.query).
+# artex-guidance: Enable RocketMQ Dashboard loginRequired=true and restrict network access.
+id: infra-rocketmq-console-unauth
+info:
+  name: Apache RocketMQ Console Unauthenticated Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/cluster/list.query"
+      - "{{BaseURL}}/topic/list.query"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"brokerServer"'
+          - '"topicList"'
+        condition: or

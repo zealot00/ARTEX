@@ -1,0 +1,24 @@
+# artex-name: infra-nexus-artifactory-unauth
+# artex-severity: medium
+# artex-tags: nexus,artifactory,ci,registry,unauth,infra,intranet
+# artex-desc: Detect unauthenticated Sonatype Nexus or JFrog Artifactory repository listing endpoints.
+# artex-guidance: Verify whether internal proprietary packages or build artifacts are downloadable anonymously.
+id: infra-nexus-artifactory-unauth
+info:
+  name: Nexus / Artifactory Unauthenticated Repository Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/service/rest/v1/repositories"
+      - "{{BaseURL}}/artifactory/api/repositories"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"format"'
+          - '"packageType"'
+        condition: or

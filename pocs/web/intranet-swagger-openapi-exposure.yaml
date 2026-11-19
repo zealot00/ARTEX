@@ -1,0 +1,27 @@
+# artex-name: intranet-swagger-openapi-exposure
+# artex-severity: medium
+# artex-tags: swagger,openapi,api,exposure,intranet
+# artex-desc: Detect unauthenticated Swagger / OpenAPI specification endpoints for API surface discovery.
+# artex-guidance: Parse discovered paths and parameters from the OpenAPI JSON, then test unauthenticated access, IDOR, and mass assignment against sensitive endpoints.
+id: intranet-swagger-openapi-exposure
+info:
+  name: Swagger / OpenAPI Specification Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/v2/api-docs"
+      - "{{BaseURL}}/v3/api-docs"
+      - "{{BaseURL}}/swagger-ui.html"
+      - "{{BaseURL}}/swagger-ui/index.html"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"swagger"'
+          - '"openapi"'
+          - 'Swagger UI'
+        condition: or

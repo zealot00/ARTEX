@@ -1,0 +1,24 @@
+# artex-name: infra-rabbitmq-management-exposure
+# artex-severity: high
+# artex-tags: rabbitmq,mq,default-login,infra,intranet
+# artex-desc: Detect RabbitMQ Management API (:15672) accepting default guest:guest credentials on /api/overview.
+# artex-guidance: Report RabbitMQ version and cluster name; remove or rotate guest user and restrict management port.
+id: infra-rabbitmq-management-exposure
+info:
+  name: RabbitMQ Management Default Guest Access
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/overview"
+    headers:
+      Authorization: Basic Z3Vlc3Q6Z3Vlc3Q=
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"rabbitmq_version"'
+          - '"management_version"'
+        condition: and

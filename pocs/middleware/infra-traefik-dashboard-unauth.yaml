@@ -1,0 +1,24 @@
+# artex-name: infra-traefik-dashboard-unauth
+# artex-severity: high
+# artex-tags: traefik,gateway,unauth,middleware,infra,intranet
+# artex-desc: Detect unauthenticated Traefik Dashboard API (/api/http/routers, /api/overview).
+# artex-guidance: Disable api.insecure=true and protect Traefik dashboard with authentication middleware.
+id: infra-traefik-dashboard-unauth
+info:
+  name: Traefik Dashboard Unauthenticated Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/http/routers"
+      - "{{BaseURL}}/api/overview"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"entryPoints"'
+          - '"providers"'
+        condition: or

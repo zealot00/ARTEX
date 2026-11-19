@@ -1,0 +1,27 @@
+# artex-name: intranet-spring-actuator-exposure
+# artex-severity: high
+# artex-tags: spring,actuator,exposure,intranet
+# artex-desc: Detect exposed Spring Boot Actuator endpoints (/actuator/env, /actuator/heapdump, /actuator/mappings).
+# artex-guidance: Inspect /actuator/env or /actuator/configprops for leaked DB/Redis/JWT secrets (never dump full heapdump unnecessarily) and store credentials in task_credentials.
+id: intranet-spring-actuator-exposure
+info:
+  name: Spring Boot Actuator Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/actuator"
+      - "{{BaseURL}}/actuator/env"
+      - "{{BaseURL}}/actuator/mappings"
+      - "{{BaseURL}}/env"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"_links"'
+          - '"propertySources"'
+          - '"dispatcherServlets"'
+        condition: or

@@ -1,0 +1,26 @@
+# artex-name: infra-k8s-etcd-unauth
+# artex-severity: critical
+# artex-tags: kubernetes,k8s,etcd,unauth,infra
+# artex-desc: Detect unauthenticated etcd (:2379) API exposure allowing cluster metadata or secret key enumeration.
+# artex-guidance: Verify /version or /v2/members read-only exposure; never dump or modify cluster secrets without explicit approval.
+id: infra-k8s-etcd-unauth
+info:
+  name: Kubernetes etcd Unauthenticated API Exposure
+  severity: critical
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/version"
+      - "{{BaseURL}}/v2/keys"
+      - "{{BaseURL}}/v2/members"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"etcdserver"'
+          - '"etcdcluster"'
+          - '"members"'
+        condition: or

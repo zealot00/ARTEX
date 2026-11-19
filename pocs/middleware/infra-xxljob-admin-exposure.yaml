@@ -1,0 +1,24 @@
+# artex-name: infra-xxljob-admin-exposure
+# artex-severity: medium
+# artex-tags: xxljob,java,scheduler,infra,intranet
+# artex-desc: Detect exposed XXL-JOB Admin console or unauthenticated executor /beat endpoint.
+# artex-guidance: Check if XXL-JOB executor accessToken is unset (default empty) or admin uses default admin/123456.
+id: infra-xxljob-admin-exposure
+info:
+  name: XXL-JOB Admin / Executor Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/xxl-job-admin/toLogin"
+      - "{{BaseURL}}/toLogin"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "XXL-JOB"
+          - "jobinfo"
+        condition: or

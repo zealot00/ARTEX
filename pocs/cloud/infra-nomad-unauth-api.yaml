@@ -1,0 +1,24 @@
+# artex-name: infra-nomad-unauth-api
+# artex-severity: critical
+# artex-tags: nomad,hashicorp,cloud,container,unauth,infra,intranet
+# artex-desc: Detect unauthenticated HashiCorp Nomad (:4646 /v1/jobs, /v1/agent/self) orchestration API.
+# artex-guidance: Enable Nomad ACLs and mTLS; never expose :4646 without authentication.
+id: infra-nomad-unauth-api
+info:
+  name: HashiCorp Nomad Unauthenticated API Exposure
+  severity: critical
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/v1/jobs"
+      - "{{BaseURL}}/v1/agent/self"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"Nomad"'
+          - '"Datacenter"'
+        condition: or

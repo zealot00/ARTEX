@@ -1,0 +1,24 @@
+# artex-name: infra-weblogic-console-exposure
+# artex-severity: high
+# artex-tags: weblogic,oracle,java,middleware,infra,intranet
+# artex-desc: Detect exposed Oracle WebLogic Admin Console (/console/login/LoginForm.jsp) and legacy SOAP endpoints.
+# artex-guidance: Restrict /console to management networks and verify latest Oracle CPU patches are applied.
+id: infra-weblogic-console-exposure
+info:
+  name: Oracle WebLogic Admin Console Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/console/login/LoginForm.jsp"
+      - "{{BaseURL}}/_async/AsyncResponseService"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "Oracle WebLogic Server"
+          - "AsyncResponseService"
+        condition: or

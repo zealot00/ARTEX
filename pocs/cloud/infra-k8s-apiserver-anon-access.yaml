@@ -1,0 +1,24 @@
+# artex-name: infra-k8s-apiserver-anon-access
+# artex-severity: critical
+# artex-tags: kubernetes,k8s,apiserver,unauth,infra,intranet
+# artex-desc: Detect Kubernetes API Server (:6443/:8080) permitting anonymous access to /api/v1/namespaces or /apis.
+# artex-guidance: Disable --anonymous-auth=true or remove system:anonymous ClusterRoleBindings.
+id: infra-k8s-apiserver-anon-access
+info:
+  name: Kubernetes API Server Anonymous Access
+  severity: critical
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/v1/namespaces"
+      - "{{BaseURL}}/api/v1/pods"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"NamespaceList"'
+          - '"PodList"'
+        condition: or

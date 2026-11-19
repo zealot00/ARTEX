@@ -1,0 +1,24 @@
+# artex-name: infra-portainer-rancher-exposure
+# artex-severity: high
+# artex-tags: portainer,rancher,docker,k8s,container,infra,intranet
+# artex-desc: Detect exposed Portainer (/api/status, /api/users/admin/check) or Rancher (/v3-public/authProviders) container management consoles.
+# artex-guidance: Verify whether Portainer admin initialization is still open (404 on /api/users/admin/check) or endpoints are exposed.
+id: infra-portainer-rancher-exposure
+info:
+  name: Portainer / Rancher Container Management Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/status"
+      - "{{BaseURL}}/v3-public/authProviders"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"InstanceID"'
+          - '"authProvider"'
+        condition: or

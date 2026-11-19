@@ -1,0 +1,26 @@
+# artex-name: infra-openstack-keystone-api
+# artex-severity: high
+# artex-tags: openstack,keystone,cloud,iaas,exposure,infra,intranet
+# artex-desc: Detect exposed OpenStack Keystone (:5000 /v3), Glance (/v2/images), or Horizon dashboard endpoints.
+# artex-guidance: Check whether public/unauthenticated image listing (/v2/images) or management APIs are exposed outside the OpenStack control plane VLAN.
+id: infra-openstack-keystone-api
+info:
+  name: OpenStack Keystone / Glance / Horizon Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/v3"
+      - "{{BaseURL}}/v2/images"
+      - "{{BaseURL}}/dashboard/auth/login/"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200, 300]
+      - type: word
+        words:
+          - '"identity"'
+          - '"openstack"'
+          - 'OpenStack Dashboard'
+        condition: or

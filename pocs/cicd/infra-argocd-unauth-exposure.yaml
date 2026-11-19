@@ -1,0 +1,24 @@
+# artex-name: infra-argocd-unauth-exposure
+# artex-severity: high
+# artex-tags: argocd,gitops,k8s,cicd,unauth,infra,intranet
+# artex-desc: Detect ArgoCD API version exposure or unauthenticated application listing (/api/v1/applications).
+# artex-guidance: Disable ArgoCD anonymous user (users.anonymous.enabled: false) and enforce RBAC/SSO.
+id: infra-argocd-unauth-exposure
+info:
+  name: ArgoCD Unauthenticated Application Listing
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/v1/applications"
+      - "{{BaseURL}}/api/version"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"ApplicationList"'
+          - '"argocd"'
+        condition: or

@@ -1,0 +1,26 @@
+# artex-name: intranet-nacos-unauth-probe
+# artex-severity: high
+# artex-tags: nacos,alibaba,middleware,unauth,intranet
+# artex-desc: Detect exposed Alibaba Nacos APIs (/nacos/v1/cs/configs, /nacos/v1/auth/users) accessible without authentication.
+# artex-guidance: Check if namespace/config read or user list endpoints return DB/Redis/service credentials without a valid accessToken.
+id: intranet-nacos-unauth-probe
+info:
+  name: Alibaba Nacos Unauthenticated API Probe
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/nacos/v1/console/health/readiness"
+      - "{{BaseURL}}/nacos/v1/ns/instance/list?serviceName=test"
+      - "{{BaseURL}}/nacos/v1/auth/users?pageNo=1&pageSize=10"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"pageItems"'
+          - '"hosts"'
+          - 'UP'
+        condition: or

@@ -1,0 +1,24 @@
+# artex-name: infra-kong-admin-exposure
+# artex-severity: critical
+# artex-tags: kong,gateway,unauth,middleware,infra,intranet
+# artex-desc: Detect unauthenticated Kong Gateway Admin API (:8001 /services, /routes).
+# artex-guidance: Bind Kong Admin API to 127.0.0.1 or place behind mutual TLS / RBAC gateway.
+id: infra-kong-admin-exposure
+info:
+  name: Kong Gateway Admin API Unauthenticated Exposure
+  severity: critical
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+      - "{{BaseURL}}/services"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"tagline":"Welcome to kong"'
+          - '"configuration"'
+        condition: or

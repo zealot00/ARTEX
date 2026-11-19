@@ -1,0 +1,24 @@
+# artex-name: infra-neo4j-browser-unauth
+# artex-severity: high
+# artex-tags: neo4j,database,graph,unauth,infra,intranet
+# artex-desc: Detect Neo4j HTTP API (:7474) accessible without authentication.
+# artex-guidance: Enforce dbms.security.auth_enabled=true in neo4j.conf.
+id: infra-neo4j-browser-unauth
+info:
+  name: Neo4j HTTP API Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/db/neo4j/tx/commit"
+      - "{{BaseURL}}/"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"neo4j_version"'
+          - '"bolt_direct"'
+        condition: or

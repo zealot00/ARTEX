@@ -1,0 +1,24 @@
+# artex-name: infra-elasticsearch-unauth
+# artex-severity: high
+# artex-tags: elasticsearch,database,unauth,infra,intranet
+# artex-desc: Detect unauthenticated Elasticsearch cluster endpoints (/_cat/indices, /_cluster/health).
+# artex-guidance: List index names and document counts via /_cat/indices?v as read-only proof of data exposure.
+id: infra-elasticsearch-unauth
+info:
+  name: Elasticsearch Unauthenticated Access
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/_cat/indices?v"
+      - "{{BaseURL}}/_cluster/health"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"cluster_name"'
+          - 'docs.count'
+        condition: or

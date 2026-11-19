@@ -1,0 +1,24 @@
+# artex-name: infra-openshift-console-api
+# artex-severity: medium
+# artex-tags: openshift,k8s,cloud,exposure,infra,intranet
+# artex-desc: Detect exposed OpenShift OAuth metadata (/.well-known/oauth-authorization-server) and cluster API version.
+# artex-guidance: Verify anonymous access is restricted and OAuth endpoints enforce enterprise IdP policies.
+id: infra-openshift-console-api
+info:
+  name: OpenShift API & OAuth Metadata Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.well-known/oauth-authorization-server"
+      - "{{BaseURL}}/version/openshift"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"authorization_endpoint"'
+          - '"openshift"'
+        condition: or

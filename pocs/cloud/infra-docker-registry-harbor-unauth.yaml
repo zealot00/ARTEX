@@ -1,0 +1,24 @@
+# artex-name: infra-docker-registry-harbor-unauth
+# artex-severity: high
+# artex-tags: docker,harbor,registry,container,unauth,infra
+# artex-desc: Detect unauthenticated Docker Registry v2 (/v2/_catalog) or Harbor (/api/v2.0/projects) image repository listing.
+# artex-guidance: List exposed repository names to prove internal image/source disclosure risk.
+id: infra-docker-registry-harbor-unauth
+info:
+  name: Docker Registry / Harbor Unauthenticated Catalog Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/v2/_catalog"
+      - "{{BaseURL}}/api/v2.0/projects"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"repositories"'
+          - '"project_id"'
+        condition: or

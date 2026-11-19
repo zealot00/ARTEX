@@ -1,0 +1,26 @@
+# artex-name: infra-jboss-wildfly-console
+# artex-severity: high
+# artex-tags: jboss,wildfly,java,middleware,infra,intranet
+# artex-desc: Detect exposed JBoss / WildFly JMX Console (/jmx-console/, /web-console/, /management).
+# artex-guidance: Disable or restrict JMX/management consoles to management subnets with strong auth.
+id: infra-jboss-wildfly-console
+info:
+  name: JBoss / WildFly Management Console Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/jmx-console/"
+      - "{{BaseURL}}/web-console/"
+      - "{{BaseURL}}/management"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200, 401]
+      - type: word
+        words:
+          - "JBoss JMX Management Console"
+          - "WildFly"
+          - "ManagementRealm"
+        condition: or

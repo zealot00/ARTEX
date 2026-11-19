@@ -1,0 +1,27 @@
+# artex-name: infra-zabbix-unauth-exposure
+# artex-severity: high
+# artex-tags: zabbix,monitor,unauth,infra,intranet
+# artex-desc: Detect Zabbix API version disclosure and unauthenticated Guest dashboard access.
+# artex-guidance: Disable Zabbix Guest account and restrict /zabbix/ management console to O&M bastion.
+id: infra-zabbix-unauth-exposure
+info:
+  name: Zabbix Unauthenticated Guest / API Exposure
+  severity: high
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/api_jsonrpc.php"
+      - "{{BaseURL}}/zabbix/api_jsonrpc.php"
+    headers:
+      Content-Type: application/json-rpc
+    body: '{"jsonrpc":"2.0","method":"apiinfo.version","params":[],"id":1}'
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"jsonrpc":"2.0"'
+          - '"result":'
+        condition: and

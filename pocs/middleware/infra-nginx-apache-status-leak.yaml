@@ -1,0 +1,27 @@
+# artex-name: infra-nginx-apache-status-leak
+# artex-severity: low
+# artex-tags: nginx,apache,phpinfo,status,exposure,infra,intranet
+# artex-desc: Detect exposed Nginx stub_status, Apache server-status, or phpinfo diagnostic pages.
+# artex-guidance: Restrict status pages to 127.0.0.1 and remove phpinfo files from web roots.
+id: infra-nginx-apache-status-leak
+info:
+  name: Nginx / Apache Status or PHPInfo Exposure
+  severity: low
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/nginx_status"
+      - "{{BaseURL}}/stub_status"
+      - "{{BaseURL}}/server-status"
+      - "{{BaseURL}}/phpinfo.php"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "Active connections:"
+          - "Apache Server Status"
+          - "PHP Version"
+        condition: or

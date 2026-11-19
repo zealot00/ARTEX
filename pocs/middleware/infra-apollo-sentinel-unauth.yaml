@@ -1,0 +1,24 @@
+# artex-name: infra-apollo-sentinel-unauth
+# artex-severity: high
+# artex-tags: apollo,sentinel,spring,middleware,unauth,infra,intranet
+# artex-desc: Detect unauthenticated Alibaba Sentinel Dashboard (/machine.json, /app/briefinfos.json) or Apollo config endpoints.
+# artex-guidance: Enable authentication on Sentinel Dashboard and restrict config center admin APIs.
+id: infra-apollo-sentinel-unauth
+info:
+  name: Sentinel / Apollo Unauthenticated Console Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/app/briefinfos.json"
+      - "{{BaseURL}}/apps"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"machines"'
+          - '"appId"'
+        condition: or

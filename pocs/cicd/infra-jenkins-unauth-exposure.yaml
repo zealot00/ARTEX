@@ -1,0 +1,24 @@
+# artex-name: infra-jenkins-unauth-exposure
+# artex-severity: high
+# artex-tags: jenkins,ci,cd,unauth,infra,intranet
+# artex-desc: Detect unauthenticated Jenkins API (/api/json) or Groovy script console (/script) exposure.
+# artex-guidance: Verify read-only job/version listing on /api/json or anonymous access to /script without executing destructive commands.
+id: infra-jenkins-unauth-exposure
+info:
+  name: Jenkins Unauthenticated API or Script Console Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/json"
+      - "{{BaseURL}}/script"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"hudson.model.Hudson"'
+          - 'Script Console'
+        condition: or

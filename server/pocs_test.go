@@ -111,8 +111,8 @@ func TestSearchPocsOfflineTemplatesAndFence(t *testing.T) {
 
 func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 	pocs := defaultIntranetPocs()
-	if len(pocs) < 60 {
-		t.Fatalf("expected at least 60 built-in intranet/infra PoCs, got %d", len(pocs))
+	if len(pocs) < 75 {
+		t.Fatalf("expected at least 75 file-based intranet/infra PoCs in pocs/, got %d", len(pocs))
 	}
 	seen := map[string]bool{}
 	var redisScript, memcachedScript, rsyncScript, printScript, zkScript, pgScript string
@@ -191,6 +191,21 @@ func TestDefaultInfraPocsCatalogAndRedisProbe(t *testing.T) {
 		"infra-tomcat-manager-exposure",
 		"infra-weblogic-console-exposure",
 		"infra-apollo-sentinel-unauth",
+		"infra-apisix-admin-exposure",
+		"infra-kong-admin-exposure",
+		"infra-traefik-dashboard-unauth",
+		"infra-activemq-console-exposure",
+		"infra-rocketmq-console-unauth",
+		"infra-jboss-wildfly-console",
+		"infra-argocd-unauth-exposure",
+		"infra-skywalking-pinpoint-unauth",
+		"infra-neo4j-browser-unauth",
+		"infra-phpmyadmin-adminer-exposure",
+		"infra-presto-trino-unauth",
+		"infra-nomad-unauth-api",
+		"infra-openshift-console-api",
+		"infra-ipmi-bmc-exposure",
+		"infra-smtp-open-relay-vrfy",
 	} {
 		if !seen[required] {
 			t.Fatalf("missing required infra PoC %q", required)

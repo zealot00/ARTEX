@@ -1,0 +1,25 @@
+# artex-name: infra-vmware-vcenter-esxi-exposure
+# artex-severity: medium
+# artex-tags: vmware,vcenter,esxi,virtualization,cloud,infra,intranet
+# artex-desc: Detect exposed VMware vCenter / ESXi management APIs (/sdk/vimServiceVersions.xml, /mob/) and version metadata.
+# artex-guidance: Restrict vCenter/ESXi management interfaces to jump-host VLANs and disable MOB (/mob/) in production.
+id: infra-vmware-vcenter-esxi-exposure
+info:
+  name: VMware vCenter / ESXi Management & MOB Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/sdk/vimServiceVersions.xml"
+      - "{{BaseURL}}/mob/"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200, 401]
+      - type: word
+        words:
+          - "urn:vim25"
+          - "VMware"
+          - "Managed Object Browser"
+        condition: or

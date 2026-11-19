@@ -1,0 +1,24 @@
+# artex-name: infra-activemq-console-exposure
+# artex-severity: high
+# artex-tags: activemq,mq,default-login,middleware,infra,intranet
+# artex-desc: Detect Apache ActiveMQ Web Console (:8161) accepting default admin:admin credentials.
+# artex-guidance: Rotate default ActiveMQ console credentials in jetty-realm.properties and upgrade ActiveMQ.
+id: infra-activemq-console-exposure
+info:
+  name: Apache ActiveMQ Console Default Credentials
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/admin/queues.jsp"
+    headers:
+      Authorization: Basic YWRtaW46YWRtaW4=
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "ActiveMQ"
+          - "Queues"
+        condition: and

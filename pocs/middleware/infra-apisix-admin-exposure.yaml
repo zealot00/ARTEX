@@ -1,0 +1,26 @@
+# artex-name: infra-apisix-admin-exposure
+# artex-severity: critical
+# artex-tags: apisix,gateway,unauth,middleware,infra,intranet
+# artex-desc: Detect exposed Apache APISIX Admin API (:9180) or Dashboard endpoints.
+# artex-guidance: Restrict APISIX Admin API to loopback/management VLAN and rotate default X-API-KEY.
+id: infra-apisix-admin-exposure
+info:
+  name: Apache APISIX Admin API / Dashboard Exposure
+  severity: critical
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/apisix/admin/routes"
+      - "{{BaseURL}}/apisix/admin/services"
+    headers:
+      X-API-KEY: edd1c9f034335f136f87ad84b625c8f1
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"action":"get"'
+          - '"list":'
+        condition: or

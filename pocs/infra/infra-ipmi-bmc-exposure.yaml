@@ -1,0 +1,27 @@
+# artex-name: infra-ipmi-bmc-exposure
+# artex-severity: high
+# artex-tags: ipmi,idrac,ilo,ibmc,hardware,oob-mgmt,infra,intranet
+# artex-desc: Detect exposed bare-metal out-of-band management web interfaces (Dell iDRAC, HPE iLO, Huawei iBMC, Supermicro IPMI).
+# artex-guidance: Isolate BMC/IPMI interfaces into dedicated out-of-band management VLANs unreachable from business networks.
+id: infra-ipmi-bmc-exposure
+info:
+  name: Bare-Metal BMC / iDRAC / iLO / iBMC Exposure
+  severity: high
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/redfish/v1/"
+      - "{{BaseURL}}/login.html"
+      - "{{BaseURL}}/"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"RedfishVersion"'
+          - "Integrated Dell Remote Access Controller"
+          - "Integrated Lights-Out"
+          - "iBMC"
+        condition: or

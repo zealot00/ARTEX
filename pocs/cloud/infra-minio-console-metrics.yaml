@@ -1,0 +1,24 @@
+# artex-name: infra-minio-console-metrics
+# artex-severity: medium
+# artex-tags: minio,s3,storage,exposure,infra,intranet
+# artex-desc: Detect exposed MinIO cluster metrics (/minio/v2/metrics/cluster) or health/console endpoints.
+# artex-guidance: Verify whether cluster metrics or anonymous S3 buckets expose internal object listings.
+id: infra-minio-console-metrics
+info:
+  name: MinIO Cluster Metrics / API Exposure
+  severity: medium
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/minio/v2/metrics/cluster"
+      - "{{BaseURL}}/minio/prometheus/metrics"
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "minio_cluster_"
+          - "minio_s3_"
+        condition: or
