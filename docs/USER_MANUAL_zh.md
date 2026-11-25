@@ -144,10 +144,18 @@ docker compose up -d --build
 
 ### 5.4 业务逻辑越权、竞态探测与代理鉴权头注入
 
+- **前端 JS / OpenAPI 契约自动提取并入库（`extract_web_contracts`）**：对电子围栏内的 Web 服务自动解析 `/v3/api-docs`、`/v2/api-docs`、`/swagger.json`、`/openapi.json` 及首页引用的同源 `.js` Bundle，提取 API 路由与参数并直接调用 `UpsertEndpoint` 注册回任务资产图谱。
+- **录制流量驱动的批量鉴权核查（`traffic_fuzz_audit`）**：直接读取录制代理已捕获的目标主机请求，按 URL 模板去重后批量剥离凭证或替换低权凭证重放，快速筛出未授权访问与越权接口。
 - **双账号 / 无账号越权对比（`authz_replay`）**：Agent 对业务接口自动重放基准高权、剥离认证头（未授权）、低权限凭据及路径/代理头绕过变体（禁止自动跟随跨边界重定向），直接判定越权风险。
 - **并发条件竞争探测（`race_probe`）**：通过同步屏障释放并发请求，验证审批/额度/优惠券/状态机竞态，`prod_safe_mode` 下自动收紧至 5 并发。
 - **按 Host 隔离的代理鉴权头注入**：在任务详情页 `Depth & Fence` -> **代理鉴权头自动注入** 中为指定内网 Host（如 `portal.corp.local`）配置测试 `Cookie` / `Authorization`；系统禁止通配符 `*` 及出围栏域名，读取自动脱敏，任务结束自动清除。
 - **任务外联审计留痕**：任务执行期间的外部域名/公网 IP 外联会自动记录到 `task_outbound_logs`，可在 `Depth & Fence` 页面实时查看，并自动写入标准报告与等保 2.0 报告第 5 节，供上层流量监控核查自证。
+
+### 5.5 资产驱动攻击面矩阵与开源组件源码白盒/灰盒联动
+
+- **资产驱动攻击面矩阵（`plan_asset_hunt`）**：服务端每轮唤醒 Planner 时，自动比对任务关联资产与已派发 Intent 的覆盖情况，按资产类型、参数语义（`idor_bola`、`ssrf_oob`、`path_file_ssti`、`biz_race_massassign`、`injection`）与开源组件指纹生成未覆盖高优挖掘清单。
+- **开源组件源码/制品获取（`oss_fetch_source`）**：识别到常见开源组件（如 RuoYi、JeecgBoot、Nacos、JumpServer、Grafana、Harbor、MinIO 等）或本地 `.zip`/`.jar`/`.war` 归档时，自动按版本 tag 浅克隆或安全解压至 `<task_dir>/oss-src/<component>`。
+- **Semgrep + 原生多语言静态审计（`code_scan_semgrep` & `codeaudit` 工具集）**：在审计目录上运行 `code_scan_semgrep`（支持 `ARTEX_SEMGREP_RULES_DIR` 指定离线规则库）、`code_map_entrypoints`、`code_scan_sinks`、`code_audit_auth_gaps`、`code_trace_symbol`、`code_read_context` 与 `code_audit_deps`，定位精确 `file:line` 后回连在线资产完成灰盒实锤验证。
 
 ---
 
