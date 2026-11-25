@@ -89,7 +89,36 @@ func (s *Server) buildPlannerRuntimeContext(taskID int64, taskDir string) string
 		b.WriteString("  -> Run structured code-audit waves using code_map_entrypoints, code_audit_deps, code_scan_sinks, code_audit_auth_gaps, code_trace_symbol, and code_read_context.\n")
 	}
 
-	// 5. Available PoC & wordlist inventory
+	// 5. Asset-driven attack surface matrix (auto-links discovered assets to uncovered hunt routes)
+	if s.m.assets != nil {
+		if matrix, err := s.computeTaskAssetHuntMatrix(taskID, 8); err == nil && matrix.TotalAssets > 0 {
+			fmt.Fprintf(&b, "- Asset-driven hunt matrix: %d total assets (%d covered by intents, %d uncovered)\n",
+				matrix.TotalAssets, matrix.CoveredAssets, matrix.UncoveredAssets)
+			shown := 0
+			for _, rec := range matrix.Recommendations {
+				if rec.Covered && shown >= 3 {
+					continue
+				}
+				state := "UNCOVERED"
+				if rec.Covered {
+					state = "covered"
+				}
+				ossHint := ""
+				if rec.OSSCandidate != nil {
+					ossHint = fmt.Sprintf(" [OSS=%s -> oss_fetch_source(%s)]", rec.OSSCandidate.Component, rec.OSSCandidate.RepoURL)
+				}
+				fmt.Fprintf(&b, "  -> [%s|%s] asset#%d (%s) %s tags=%v tools=%v%s\n",
+					state, rec.Priority, rec.AssetID, rec.AssetType, rec.Target, rec.Tags, rec.Recommended, ossHint)
+				shown++
+				if shown >= 8 {
+					break
+				}
+			}
+			b.WriteString("  -> Call plan_asset_hunt(task_id) for the full prioritized matrix; prioritize UNCOVERED high-value assets before wrapping up.\n")
+		}
+	}
+
+	// 6. Available PoC & wordlist inventory
 	filePocs := len(loadPocsFromDir(pocsDir()))
 	wlCount := 0
 	if s.m.pg != nil {
@@ -97,7 +126,7 @@ func (s *Server) buildPlannerRuntimeContext(taskID int64, taskDir string) string
 			wlCount = len(wls)
 		}
 	}
-	fmt.Fprintf(&b, "- Enterprise tooling inventory: %d file-based PoCs in %s (use run_infra_baseline / search_pocs / run_poc), %d encrypted wordlists (use list_wordlists / run_credential_audit / run_password_spray), internal OOB callback (oob_create_token / oob_poll_hits), business-logic probes (authz_replay / race_probe).\n",
+	fmt.Fprintf(&b, "- Enterprise tooling inventory: %d file-based PoCs in %s (use run_infra_baseline / search_pocs / run_poc), %d encrypted wordlists (use list_wordlists / run_credential_audit / run_password_spray), internal OOB callback (oob_create_token / oob_poll_hits), business-logic & traffic probes (authz_replay / race_probe / extract_web_contracts / traffic_fuzz_audit), OSS source auditing (oss_fetch_source / code_scan_semgrep).\n",
 		filePocs, pocsDir(), wlCount)
 
 	return b.String()

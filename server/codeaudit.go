@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -48,6 +49,7 @@ func (s *Server) resolveTaskAuditDir(taskID, subPath string) (string, error) {
 	if base == "" {
 		return "", fmt.Errorf("task workspace unavailable")
 	}
+	_ = os.MkdirAll(base, 0o755)
 	return codeaudit.SafeResolveDir(base, subPath)
 }
 

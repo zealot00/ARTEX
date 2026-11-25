@@ -13,6 +13,12 @@ Never report findings in, and never trace through: test code, build and packagin
 
 **Exception**: security-relevant infrastructure configuration checked into the repository IS in scope when it affects the application's security assumptions (reverse proxy and nginx directives, trust proxy settings, header forwarding, TLS termination, CORS policy). A directive that promotes a normally trusted value to attacker-controllable is a deployed vulnerability, not an operational note.
 
+## Phase 0: open-source source acquisition & asset linkage (`oss_fetch_source` + `code_scan_semgrep`)
+
+When auditing an identified open-source component or archive from the asset inventory:
+1. Call `oss_fetch_source(task_id, component, repo_url, version)` to fetch the matching version tag or unpack the local `.jar`/`.war`/`.zip` into `<task_dir>/oss-src/<component>`.
+2. Run `code_scan_semgrep(task_id, path)` alongside `code_map_entrypoints`, `code_scan_sinks`, `code_audit_auth_gaps`, and `code_audit_deps` to establish the structured baseline before deep manual tracing.
+
 ## Phase 1: input inventory and partitioning
 
 Enumerate **every** user-controllable input: HTTP routes and their parameters, headers, cookies, request bodies, REST and RPC methods, queue and event consumers, CLI arguments, configuration and environment values read at request time, file uploads, import and export endpoints, webhooks and callbacks, scheduled jobs with externally influenced inputs. For each entry point record the handler file:line.

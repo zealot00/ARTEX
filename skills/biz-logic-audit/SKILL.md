@@ -5,9 +5,9 @@ description: "Invoke this skill when testing enterprise business applications fo
 
 # Business Logic, Access Control & Race Condition Audit
 
-## 1. Multi-Role Access Control & IDOR (`authz_replay`)
-1. Capture or identify an authenticated business endpoint (`GET`/`POST`/`PUT`/`DELETE`).
-2. Run `authz_replay(task_id, url, method, headers, body, low_priv_headers, include_bypasses=true)`:
+## 1. Multi-Role Access Control & IDOR (`extract_web_contracts` + `traffic_fuzz_audit` + `authz_replay`)
+1. Call `extract_web_contracts(task_id, base_url)` to harvest OpenAPI/Swagger specs and front-end JS bundle routes into the task's asset graph, and call `traffic_fuzz_audit(task_id, host, low_priv_headers)` to batch-audit captured proxy requests across roles.
+2. On specific sensitive endpoints (`GET`/`POST`/`PUT`/`DELETE`), run `authz_replay(task_id, url, method, headers, body, low_priv_headers, include_bypasses=true)`:
    - Verifies **unauthenticated** access (all `Authorization` / `Cookie` / `X-Token` stripped).
    - Verifies **horizontal/vertical privilege escalation** when `low_priv_headers` are available.
    - Verifies path normalization (`..;/`) and proxy header (`X-Forwarded-For`, `X-Original-URL`) bypasses.
