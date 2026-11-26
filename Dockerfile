@@ -285,7 +285,7 @@ RUN set -eux; \
     done; \
     apt-get purge -y --auto-remove gcc g++ libffi-dev libssl-dev libkrb5-dev; \
     rm -rf /var/lib/apt/lists/*; \
-    chisel --help >/dev/null; kubectl version --client >/dev/null; nxc --version >/dev/null
+    chisel --help >/dev/null; kubectl version --client >/dev/null; nxc --help >/dev/null
 
 
 # Preinstall Playwright MCP and CLI (globally) so no npx network download is needed at runtime.
