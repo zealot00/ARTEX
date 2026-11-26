@@ -234,8 +234,28 @@ var sinkRules = []sinkRule{
 	{category: "auth_biz", rule: "tls-verify-disabled", severity: "medium", hint: "TLS certificate verification disabled (MITM risk)", re: regexp.MustCompile(`(?:InsecureSkipVerify\s*:\s*true|verify\s*=\s*False|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['"]?0)`)},
 	{category: "auth_biz", rule: "jwt-weak-verify", severity: "high", hint: "JWT parsed without signature verification or alg=none", re: regexp.MustCompile(`(?i)(?:verify_signature['"]?\s*:\s*False|parseClaimsJwt\s*\(|alg["']?\s*[:=]\s*["']none)`)},
 
-	// Hardcoded Secrets
-	{category: "secrets", rule: "hardcoded-secret", severity: "high", hint: "Potential hardcoded secret/JWT key/cloud credential in source code", re: regexp.MustCompile(`(?i)(?:jwt[_-]?secret|secret[_-]?key|api[_-]?key|access[_-]?key|db[_-]?password)\s*[:=]\s*["'][A-Za-z0-9_\-!@#$%^&*+=]{8,}["']|AKIA[0-9A-Z]{16}|BEGIN (?:RSA |EC )?PRIVATE KEY`)},
+	// Hardcoded Secrets (including AWS, Alibaba Cloud, Tencent Cloud, and PEM private keys)
+	{category: "secrets", rule: "hardcoded-secret", severity: "high", hint: "Potential hardcoded secret/JWT key/cloud credential in source code", re: regexp.MustCompile(`(?i)(?:jwt[_-]?secret|secret[_-]?key|api[_-]?key|access[_-]?key|db[_-]?password)\s*[:=]\s*["'][A-Za-z0-9_\-!@#$%^&*+=]{8,}["']|\b(?:AKIA[0-9A-Z]{16}|LTAI[0-9A-Za-z]{12,24}|AKID[0-9A-Za-z]{20,36})\b|BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY`)},
+
+	// XXE (XML External Entity)
+	{category: "xxe", rule: "java-xml-parser-xxe", severity: "high", hint: "Java XML parser instantiation; verify disallow-doctype-decl and external-general-entities are disabled", re: regexp.MustCompile(`\b(?:DocumentBuilderFactory|SAXParserFactory|XMLInputFactory)\.newInstance\s*\(|new\s+(?:SAXReader|SAXBuilder|XMLReader)\s*\(`)},
+	{category: "xxe", rule: "python-xml-xxe", severity: "high", hint: "Python XML parser; prefer defusedxml or set resolve_entities=False on lxml.etree.XMLParser", re: regexp.MustCompile(`\b(?:xml\.etree\.ElementTree|xml\.dom\.minidom|xml\.sax\.parse|lxml\.etree\.XMLParser)\b`)},
+
+	// XSS / Unsafe DOM & Template Rendering
+	{category: "xss", rule: "unsafe-html-render", severity: "medium", hint: "Unescaped HTML rendering sink; verify strict output encoding or DOMPurify sanitization", re: regexp.MustCompile(`\b(?:dangerouslySetInnerHTML|v-html|document\.write\s*\(|template\.HTML\s*\()|\.innerHTML\s*=|\|\s*safe\b`)},
+
+	// Weak Cryptography & Predictable Randomness
+	{category: "crypto", rule: "weak-cipher-or-hash", severity: "medium", hint: "Weak cryptographic algorithm (MD5/SHA1/DES/RC4/AES-ECB); migrate to SHA-256/bcrypt/Argon2/AES-GCM", re: regexp.MustCompile(`(?i)(?:Cipher\.getInstance\s*\(\s*["'](?:DES|RC4|AES(?:/ECB)?)|crypto/(?:md5|sha1|des|rc4)|hashlib\.(?:md5|sha1)\s*\(|MessageDigest\.getInstance\s*\(\s*["'](?:MD5|SHA-?1)["'])`)},
+	{category: "crypto", rule: "insecure-random-token", severity: "medium", hint: "Non-cryptographic PRNG used near token/secret/code generation; use crypto/rand or SecureRandom", re: regexp.MustCompile(`(?i)(?:math/rand|java\.util\.Random|Math\.random\(\))[^\n]*(?:token|secret|key|pass|code|otp|nonce|session)?`)},
+
+	// Mass Assignment / Unsafe Object Binding
+	{category: "auth_biz", rule: "mass-assignment-binding", severity: "high", hint: "Bulk property copy or raw request-body model binding; enforce an explicit DTO field allowlist to prevent privilege/role tampering", re: regexp.MustCompile(`\b(?:BeanUtils\.copyProperties\s*\(|ModelMapper\b|Object\.assign\s*\([^,]+,\s*req\.body\b|\.Updates\s*\(\s*(?:req|body|params|input)\b)`)},
+
+	// Open Redirect & CRLF
+	{category: "redirect_crlf", rule: "unvalidated-redirect", severity: "medium", hint: "HTTP redirect sink; validate target URL against an explicit relative-path or host allowlist", re: regexp.MustCompile(`\b(?:sendRedirect|http\.Redirect|res\.redirect|c\.Redirect)\s*\(`)},
+
+	// Security Misconfigurations
+	{category: "config_misuse", rule: "debug-or-wildcard-exposure", severity: "medium", hint: "Permissive debug/CORS/actuator configuration detected; restrict in production deployments", re: regexp.MustCompile(`(?i)(?:management\.endpoints\.web\.exposure\.include\s*[:=]\s*["']?\*|allowedOrigins\s*\(\s*["']\*["']\s*\)|allowCredentials\s*\(\s*true\s*\)|\bDEBUG\s*=\s*True\b|gin\.SetMode\s*\(\s*gin\.DebugMode\s*\))`)},
 }
 
 // ScanSinks scans production source files for dangerous sinks and business-logic anti-patterns.
@@ -382,6 +402,13 @@ var watchedDeps = []struct {
 	{"jsonwebtoken", "Audit JWT algorithm pinning and secret strength"},
 	{"lodash", "Historic prototype pollution (audit version < 4.17.21)"},
 	{"pyyaml", "Audit yaml.load() vs yaml.safe_load()"},
+	{"nacos-client", "Audit Nacos auth bypass & Hessian/JRaft deserialization versions"},
+	{"druid", "Audit Alibaba Druid stat-view servlet authentication & SQL wall config"},
+	{"shiro-core", "Audit Apache Shiro rememberMe key strength & path-traversal bypass versions"},
+	{"xstream", "Audit XStream allowlist security framework configuration"},
+	{"commons-text", "Audit Apache Commons Text StringSubstitutor version (>= 1.10.0)"},
+	{"commons-collections", "Audit Commons Collections deserialization gadget versions"},
+	{"jackson-databind", "Audit polymorphic typing (defaultTyping) and latest patched version"},
 }
 
 // AuditDependencies inspects go.mod, package.json, pom.xml, and requirements.txt for high-risk libraries.

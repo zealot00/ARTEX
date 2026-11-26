@@ -17,6 +17,7 @@ func (s *Server) codeAuditTools() []actool.CoreTool {
 	return []actool.CoreTool{
 		s.toolCodeMapEntrypoints(),
 		s.toolCodeScanSinks(),
+		s.toolCodeTraceTaintFlows(),
 		s.toolCodeAuditAuthGaps(),
 		s.toolCodeTraceSymbol(),
 		s.toolCodeReadContext(),
@@ -119,6 +120,42 @@ func (s *Server) toolCodeScanSinks() actool.CoreTool {
 				hits = []codeaudit.SinkHit{}
 			}
 			return jsonResult(map[string]any{"count": len(hits), "sinks": hits})
+		},
+	)
+}
+
+func (s *Server) toolCodeTraceTaintFlows() actool.CoreTool {
+	return roTool(
+		"code_trace_taint_flows",
+		"Static intra-file source-to-sink defect tracer: correlates untrusted HTTP/RPC input sources (query/body/params/headers) with nearby dangerous sinks (SQLi, CMDi, deserialization, SSRF, XXE, XSS, path traversal, SSTI, mass assignment, open redirect) and flags whether a sanitizer was observed in the intervening window.",
+		objSchema(map[string]any{
+			"task_id":    strParam("Task ID (numeric string)"),
+			"path":       strParam("Relative directory inside the task workspace (default '.')"),
+			"categories": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional subset of defect categories (sqli, cmdi, deser, ssrf, xxe, xss, path_file, ssti_el, crypto, auth_biz, redirect_crlf, secrets, config_misuse)"},
+			"limit":      map[string]any{"type": "integer", "description": "Max taint flow hits to return (default 80, max 120)"},
+		}, "task_id"),
+		func(ctx context.Context, in json.RawMessage) (actool.Result, error) {
+			var p struct {
+				TaskID     string   `json:"task_id"`
+				Path       string   `json:"path"`
+				Categories []string `json:"categories"`
+				Limit      int      `json:"limit"`
+			}
+			if err := json.Unmarshal(in, &p); err != nil {
+				return actool.Errorf(err.Error()), nil
+			}
+			dir, err := s.resolveTaskAuditDir(p.TaskID, p.Path)
+			if err != nil {
+				return actool.Errorf(err.Error()), nil
+			}
+			hits, err := codeaudit.TraceTaintFlows(dir, p.Categories, p.Limit)
+			if err != nil {
+				return actool.Errorf(err.Error()), nil
+			}
+			if hits == nil {
+				hits = []codeaudit.TaintFlowHit{}
+			}
+			return jsonResult(map[string]any{"count": len(hits), "flows": hits})
 		},
 	)
 }
