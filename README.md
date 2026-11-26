@@ -10,8 +10,6 @@ English · [中文 README](README_zh.md) · [中文使用手册](docs/USER_MANUA
 
 </div>
 
-<a href="https://trendshift.io/repositories/316805?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-316805" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/316805/daily?language=Go" alt="BaaRai%2FARTEX | Trendshift" width="250" height="55"/></a>
-
 ---
 
 ## Screenshots

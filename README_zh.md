@@ -25,9 +25,9 @@ AI 自主渗透测试与企业内网横向防御演练平台（Go 后端 + Next.
 ## 核心能力一览
 
 - **多智能体探索与双图架构**：Planner + 并行 Worker + MainAgent 协同，维护探索图（Exploration Graph）与资产覆盖图（Asset Graph），配合 S1 机器校验型漏洞验证、HTTP 录包证据绑定（`traffic_refs`）及独立复测 Agent（`Retester`）。
-- **PoC 选择、内网 OOB 盲打与二次利用**：
-  - 镜像预置离线 `nuclei-templates`（`/opt/nuclei-templates`），支持纯断网内网开箱扫描。
-  - 提供企业私有 PoC 仓库（`GET/POST/DELETE /api/pocs`），支持 `nuclei_yaml` 与 `python_script`，通过 `search_pocs` 与 `run_poc` 受控检索与执行。
+- **PoC 选择、75+ 热加载 `./pocs` 基线、内网 OOB 盲打与二次利用**：
+  - 镜像预置离线 `nuclei-templates`（`/opt/nuclei-templates`）与 75+ 热加载基础设施/内网 PoC 目录（`./pocs`，覆盖 Samba/SMB、K8s/Kubelet/etcd/APIServer、Docker/Harbor、SSH、NTP、CUPS/IPP 打印服务、PostgreSQL、Redis/Sentinel、MySQL、MongoDB、Memcached、ZooKeeper、OpenStack、Elastic、Nacos 等），支持纯断网内网开箱扫描。
+  - 提供端口/指纹驱动的自动化批量基线工具 `run_infra_baseline`，以及企业私有 PoC 仓库（`GET/POST/DELETE /api/pocs`），支持 `nuclei_yaml` 与 `python_script`，通过 `search_pocs`、`run_poc`（支持在线编写自定义 PoC）与 `save_poc` 受控检索、执行与沉淀。
   - 内置轻量级内网 OOB 回调接收器（`/oob/{token}`、`oob_create_token`、`oob_poll_hits`），无需公网 `interactsh` 即可验证 Blind SSRF / XXE / RCE。
   - 保留非破坏性二次利用能力（[skills/poc-verify-exploit](skills/poc-verify-exploit/SKILL.md)）：立足点确认、凭据沉淀至 `task_credentials`、配合持久化深度会话衔接验证。
 - **加密且模型盲态的字典保险库**：通过 `/system/settings` 或 Admin API（`/api/wordlists`）上传字典，使用 AES-256-GCM 加密存储于 `<keyDir>/wordlists/`（不进入 PostgreSQL、工作区及 LLM 上下文），支持 `run_credential_audit`（`hydra`）与防锁定低频密码喷洒 `run_password_spray`（`nxc`，单轮上限 1–3 个密码）。
@@ -93,6 +93,8 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 | `ARTEX_LLM_DISABLE_ENV_FALLBACK` | 设为 `1` 时禁止回退读取进程环境中的公网 API Key | 空（关闭） |
 | `ARTEX_DISABLE_WEB_SEARCH` | 设为 `1` 时强制禁用出站 `web_search` | 空（关闭） |
 | `ARTEX_NUCLEI_TEMPLATES_DIR` | 离线 `nuclei-templates` 目录路径 | `/opt/nuclei-templates` |
+| `ARTEX_POCS_DIR` | 热加载文件级 PoC 目录路径 | `./pocs`（容器内 `/app/pocs`） |
+| `ARTEX_SEMGREP_RULES_DIR` | 离线/自定义 Semgrep 规则目录（供 `code_scan_semgrep` 使用） | 空（可选） |
 | `ARTEX_OOB_BASE_URL` | 供目标主机回连的内网 OOB 基准地址 | `http://10.10.0.5:8787` |
 | `ARTEX_TRUSTED_PROXIES` | 反向代理可信来源 CIDR（用于登录限流识别真实客户端 IP） | `172.17.0.1/32` |
 
