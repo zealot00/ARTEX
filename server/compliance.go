@@ -217,6 +217,8 @@ func (s *Server) getMLPSReport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	outboundLogs, _ := s.m.PG().ListTaskOutboundLogs(taskID)
+	solverState := s.loadSolverStateRecord(taskID)
+	bbEntries, _ := s.queryBlackboardEntries(s.taskLineageIDs(t, taskID), "", "", "", "", 100)
 	md := report.MLPSMarkdown(report.MLPSInput{
 		TaskID:            t.ID,
 		ExternalRef:       t.ExternalRef,
@@ -229,6 +231,8 @@ func (s *Server) getMLPSReport(w http.ResponseWriter, r *http.Request) {
 		Checks:            checks,
 		Findings:          findings,
 		OutboundLogs:      outboundLogs,
+		SolverState:       solverState,
+		BlackboardEntries: bbEntries,
 	})
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.WriteHeader(200)

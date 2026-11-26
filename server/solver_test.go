@@ -176,3 +176,39 @@ func TestBootstrapTargetSurfaceFastPath(t *testing.T) {
 		}
 	}
 }
+
+func TestTaskSolverHTTPAPI(t *testing.T) {
+	task := &Task{ID: "202"}
+	s := &Server{m: &Manager{tasks: map[string]*Task{"202": task}}}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/tasks/{id}/solver", s.getTaskSolver)
+	mux.HandleFunc("POST /api/tasks/{id}/solver/escalate", s.escalateTaskSolver)
+	mux.HandleFunc("POST /api/tasks/{id}/blackboard", s.postTaskBlackboard)
+
+	// 1. Escalate solver to L3 via HTTP.
+	reqEsc := httptest.NewRequest(http.MethodPost, "/api/tasks/202/solver/escalate",
+		strings.NewReader(`{"target_tier":3,"reason":"operator escalation"}`))
+	recEsc := httptest.NewRecorder()
+	mux.ServeHTTP(recEsc, reqEsc)
+	if recEsc.Code != http.StatusOK || !strings.Contains(recEsc.Body.String(), `"L3_WHITEBOX_GRAYBOX"`) {
+		t.Fatalf("expected 200 L3_WHITEBOX_GRAYBOX, got code=%d body=%s", recEsc.Code, recEsc.Body.String())
+	}
+
+	// 2. Post operator clue to blackboard via HTTP.
+	reqBB := httptest.NewRequest(http.MethodPost, "/api/tasks/202/blackboard",
+		strings.NewReader(`{"kind":"deferred_endpoint","target":"/api/admin/export","topic":"Needs admin JWT","precondition_tag":"auth_session"}`))
+	recBB := httptest.NewRecorder()
+	mux.ServeHTTP(recBB, reqBB)
+	if recBB.Code != http.StatusCreated || !strings.Contains(recBB.Body.String(), `"Needs admin JWT"`) {
+		t.Fatalf("expected 201 blackboard entry, got code=%d body=%s", recBB.Code, recBB.Body.String())
+	}
+
+	// 3. GET /api/tasks/202/solver returns escalated state + posted blackboard entry.
+	reqGet := httptest.NewRequest(http.MethodGet, "/api/tasks/202/solver", nil)
+	recGet := httptest.NewRecorder()
+	mux.ServeHTTP(recGet, reqGet)
+	body := recGet.Body.String()
+	if recGet.Code != http.StatusOK || !strings.Contains(body, `"L3_WHITEBOX_GRAYBOX"`) || !strings.Contains(body, `"Needs admin JWT"`) {
+		t.Fatalf("expected 200 snapshot with L3 & blackboard entry, got code=%d body=%s", recGet.Code, body)
+	}
+}

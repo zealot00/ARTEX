@@ -278,6 +278,7 @@ func (s *Server) toolSolverPruneMechanism() actool.CoreTool {
 				return actool.Errorf("target, mechanism, and evidence_ref are required to prune a mechanism"), nil
 			}
 			st, escalated := globalSolverMgr.PruneMechanism(tid, p.Target, p.Mechanism, p.Reason, p.EvidenceRef, p.Author)
+			s.persistSolverState(st)
 			return jsonResult(map[string]any{
 				"pruned":         true,
 				"auto_escalated": escalated,
@@ -313,6 +314,7 @@ func (s *Server) toolSolverEscalate() actool.CoreTool {
 			if err != nil {
 				return actool.Errorf(err.Error()), nil
 			}
+			s.persistSolverState(st)
 			return jsonResult(st)
 		},
 	)

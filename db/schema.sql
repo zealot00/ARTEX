@@ -1711,3 +1711,18 @@ CREATE INDEX IF NOT EXISTS idx_blackboard_task_state
 DROP TRIGGER IF EXISTS trg_blackboard_entries_upd ON blackboard_entries;
 CREATE TRIGGER trg_blackboard_entries_upd BEFORE UPDATE ON blackboard_entries
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =====================================================================
+-- Focused Persistent Solver state (L1-L5 escalation + pruned mechanisms)
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS task_solver_states (
+    task_id           BIGINT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+    focused_mode      BOOLEAN NOT NULL DEFAULT TRUE,
+    current_tier      INTEGER NOT NULL DEFAULT 1 CHECK (current_tier BETWEEN 1 AND 5),
+    pruned_mechanisms JSONB NOT NULL DEFAULT '[]'::jsonb,
+    escalation_log    JSONB NOT NULL DEFAULT '[]'::jsonb,
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+DROP TRIGGER IF EXISTS trg_task_solver_states_upd ON task_solver_states;
+CREATE TRIGGER trg_task_solver_states_upd BEFORE UPDATE ON task_solver_states
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();

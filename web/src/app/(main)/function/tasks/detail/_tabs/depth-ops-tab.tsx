@@ -23,7 +23,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { formatRulesText, formatSessionEndpoint, parseLineEntries, summarizeChecksProgress } from "@/lib/depth-ops";
 import { useI18n } from "@/lib/i18n/provider";
-import type { DepthSessionInfo, OutboundLog, ProxyHeaderRule, Task, TaskCheckRow } from "@/lib/types";
+import type {
+  BlackboardEntry,
+  BlackboardKind,
+  DepthSessionInfo,
+  OutboundLog,
+  ProxyHeaderRule,
+  ResourceLease,
+  SolverStateRecord,
+  Task,
+  TaskCheckRow,
+} from "@/lib/types";
 
 export function DepthOpsTab({
   taskId,
@@ -58,17 +68,28 @@ export function DepthOpsTab({
   const [lateralNote, setLateralNote] = React.useState("");
   const [approvingLateral, setApprovingLateral] = React.useState(false);
 
+  const [solverState, setSolverState] = React.useState<SolverStateRecord | null>(null);
+  const [blackboard, setBlackboard] = React.useState<BlackboardEntry[]>([]);
+  const [leases, setLeases] = React.useState<ResourceLease[]>([]);
+  const [escalatingSolver, setEscalatingSolver] = React.useState(false);
+  const [bbKind, setBbKind] = React.useState<BlackboardKind>("hypothesis");
+  const [bbTarget, setBbTarget] = React.useState("");
+  const [bbTopic, setBbTopic] = React.useState("");
+  const [bbPrecondition, setBbPrecondition] = React.useState("");
+  const [postingBB, setPostingBB] = React.useState(false);
+
   const loadAll = React.useCallback(async () => {
     setLoadingSessions(true);
     setLoadingChecks(true);
     setLoadingOutbound(true);
     try {
-      const [fenceCfg, sessList, checksRes, outList, phRules] = await Promise.all([
+      const [fenceCfg, sessList, checksRes, outList, phRules, solverSnap] = await Promise.all([
         api.taskFence(taskId).catch(() => null),
         api.taskDepthSessions(taskId).catch(() => []),
         api.taskChecks(taskId).catch(() => ({ checks: [], summary: null })),
         api.taskOutboundLogs(taskId).catch(() => []),
         api.taskProxyHeaders(taskId).catch(() => []),
+        api.taskSolver(taskId).catch(() => null),
       ]);
       if (fenceCfg) {
         setFenceEnabled(fenceCfg.fence_enabled);
@@ -78,6 +99,11 @@ export function DepthOpsTab({
       setChecks(checksRes.checks ?? []);
       setOutboundLogs(outList);
       setProxyRules(phRules);
+      if (solverSnap) {
+        setSolverState(solverSnap.solver);
+        setBlackboard(solverSnap.blackboard ?? []);
+        setLeases(solverSnap.leases ?? []);
+      }
     } finally {
       setLoadingSessions(false);
       setLoadingChecks(false);
@@ -165,6 +191,42 @@ export function DepthOpsTab({
       toast.error(err instanceof Error ? err.message : "Failed to clear proxy header rules");
     } finally {
       setSavingProxyHeaders(false);
+    }
+  };
+
+  const handleEscalateSolver = async (nextTier: number) => {
+    setEscalatingSolver(true);
+    try {
+      const res = await api.escalateTaskSolver(taskId, nextTier, "operator manual escalation");
+      setSolverState(res.solver);
+      toast.success(t("depth.solver.escalatedToast", { tier: nextTier }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("depth.solver.escalateFailed"));
+    } finally {
+      setEscalatingSolver(false);
+    }
+  };
+
+  const handlePostBlackboard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bbTopic.trim()) return;
+    setPostingBB(true);
+    try {
+      await api.postTaskBlackboard(taskId, {
+        kind: bbKind,
+        target: bbTarget.trim(),
+        topic: bbTopic.trim(),
+        precondition_tag: bbPrecondition.trim(),
+      });
+      toast.success(t("depth.solver.postedToast"));
+      setBbTopic("");
+      setBbTarget("");
+      setBbPrecondition("");
+      await loadAll();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("depth.solver.postFailed"));
+    } finally {
+      setPostingBB(false);
     }
   };
 
@@ -409,7 +471,9 @@ export function DepthOpsTab({
                 <div key={`${r.host}-${idx}`} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-xs">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono font-semibold">{r.host}</span>
-                    <Badge variant="outline">{r.overwrite ? "overwrite" : "default-if-empty"}</Badge>
+                    <Badge variant="outline">
+                      {r.overwrite ? t("depth.proxyHeaders.modeOverwrite") : t("depth.proxyHeaders.modeDefault")}
+                    </Badge>
                     {Object.entries(r.headers).map(([hk, hv]) => (
                       <Badge key={hk} variant="secondary" className="font-mono">
                         {hk}: {hv}
@@ -420,6 +484,147 @@ export function DepthOpsTab({
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Focused Persistent Solver (L1–L5) & Shared Uncertainty Blackboard */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-base">{t("depth.solver.title")}</CardTitle>
+            <CardDescription>{t("depth.solver.desc")}</CardDescription>
+          </div>
+          {solverState && solverState.current_tier < 5 && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={escalatingSolver}
+              onClick={() => void handleEscalateSolver(solverState.current_tier + 1)}
+            >
+              {t("depth.solver.escalateBtn", { tier: solverState.current_tier + 1 })}
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {([1, 2, 3, 4, 5] as const).map((tier) => {
+              const active = (solverState?.current_tier ?? 1) >= tier;
+              const isCurrent = (solverState?.current_tier ?? 1) === tier;
+              const tierKey = `depth.solver.tier.${tier}` as
+                | "depth.solver.tier.1"
+                | "depth.solver.tier.2"
+                | "depth.solver.tier.3"
+                | "depth.solver.tier.4"
+                | "depth.solver.tier.5";
+              return (
+                <Badge key={tier} variant={isCurrent ? "default" : active ? "secondary" : "outline"} className="font-mono">
+                  {t(tierKey)}
+                </Badge>
+              );
+            })}
+          </div>
+
+          {leases.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium">{t("depth.solver.leasesTitle", { count: leases.length })}</p>
+              <div className="flex flex-wrap gap-2">
+                {leases.map((l) => (
+                  <Badge key={`${l.resource_key}-${l.holder}`} variant="outline" className="font-mono text-[11px]">
+                    {l.resource_key} ({l.mode} · {l.holder})
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium">
+              {t("depth.solver.prunedTitle", { count: solverState?.pruned_mechanisms?.length ?? 0 })}
+            </p>
+            {!solverState?.pruned_mechanisms?.length ? (
+              <p className="text-xs text-muted-foreground">{t("depth.solver.prunedEmpty")}</p>
+            ) : (
+              <div className="space-y-1.5">
+                {solverState.pruned_mechanisms.map((pm, idx) => (
+                  <div key={`${pm.target}-${pm.mechanism}-${idx}`} className="rounded-md border px-3 py-1.5 text-xs">
+                    <span className="font-mono font-semibold">{pm.mechanism}</span> @{" "}
+                    <span className="font-mono text-muted-foreground">{pm.target}</span> (L{pm.tier}) — {pm.reason}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2 border-t pt-3">
+            <p className="text-xs font-medium">{t("depth.solver.blackboardTitle", { count: blackboard.length })}</p>
+            <form onSubmit={handlePostBlackboard} className="grid gap-2 sm:grid-cols-4">
+              <select
+                aria-label={t("depth.solver.kindLabel")}
+                className="h-9 rounded-md border bg-background px-2 text-xs"
+                value={bbKind}
+                onChange={(e) => setBbKind(e.target.value as BlackboardKind)}
+              >
+                <option value="hypothesis">{t("depth.solver.kind.hypothesis")}</option>
+                <option value="anomaly">{t("depth.solver.kind.anomaly")}</option>
+                <option value="precondition_need">{t("depth.solver.kind.precondition_need")}</option>
+                <option value="deferred_endpoint">{t("depth.solver.kind.deferred_endpoint")}</option>
+                <option value="env_constraint">{t("depth.solver.kind.env_constraint")}</option>
+              </select>
+              <Input
+                value={bbTarget}
+                onChange={(e) => setBbTarget(e.target.value)}
+                placeholder={t("depth.solver.targetLabel")}
+              />
+              <Input
+                value={bbTopic}
+                onChange={(e) => setBbTopic(e.target.value)}
+                placeholder={t("depth.solver.topicPlaceholder")}
+                required
+              />
+              <div className="flex gap-2">
+                <Input
+                  value={bbPrecondition}
+                  onChange={(e) => setBbPrecondition(e.target.value)}
+                  placeholder={t("depth.solver.preconditionPlaceholder")}
+                />
+                <Button type="submit" size="sm" disabled={postingBB}>
+                  {t("depth.solver.postBtn")}
+                </Button>
+              </div>
+            </form>
+
+            {blackboard.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t("depth.solver.blackboardEmpty")}</p>
+            ) : (
+              <div className="space-y-1.5">
+                {blackboard.map((e) => (
+                  <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-xs">
+                    <div className="space-y-0.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge variant="outline" className="font-mono text-[10px]">
+                          {e.kind}
+                        </Badge>
+                        <Badge
+                          variant={e.epistemic_state === "quarantined" ? "destructive" : "secondary"}
+                          className="font-mono text-[10px]"
+                        >
+                          {e.epistemic_state}
+                        </Badge>
+                        {e.precondition_tag && (
+                          <Badge variant="outline" className="font-mono text-[10px]">
+                            need:{e.precondition_tag}
+                          </Badge>
+                        )}
+                        <span className="font-medium">{e.topic}</span>
+                      </div>
+                      {e.target && <p className="font-mono text-[11px] text-muted-foreground">{e.target}</p>}
+                    </div>
+                    <span className="font-mono text-[11px] text-muted-foreground">{e.author}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 

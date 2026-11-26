@@ -56,6 +56,18 @@ func TestMLPSMarkdownIncludesNegativeEvidenceAndFindings(t *testing.T) {
 				LastSeen:   time.Date(2026, 11, 17, 11, 55, 0, 0, time.UTC),
 			},
 		},
+		SolverState: &db.SolverStateRecord{
+			TaskID:           42,
+			FocusedMode:      true,
+			CurrentTier:      4,
+			CurrentTierLabel: "L4_TECHNIQUE_SYNTHESIS",
+			PrunedMechanisms: []db.SolverPrunedMechanismRecord{
+				{Target: "/login", Mechanism: "sqli_error_based", Tier: 1, Reason: "Parameterized SQL confirmed", EvidenceRef: "traffic#12"},
+			},
+		},
+		BlackboardEntries: []db.BlackboardEntry{
+			{Kind: db.BBKindDeferredEndpoint, EpistemicState: db.BBStateTentative, Target: "/api/admin/export", Topic: "403 without admin JWT", PreconditionTag: "admin_token", EvidenceRef: "traffic#21"},
+		},
 	})
 
 	for _, want := range []string{
@@ -67,6 +79,10 @@ func TestMLPSMarkdownIncludesNegativeEvidenceAndFindings(t *testing.T) {
 		"[HIGH] 订单水平越权",
 		"任务执行期间外联审计记录",
 		"`nvd.nist.gov`",
+		"深度求解覆盖、已剪枝机制与黑板未闭合线索审计",
+		"`L4_TECHNIQUE_SYNTHESIS`",
+		"`sqli_error_based`",
+		"`deferred_endpoint`",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("MLPS report missing %q:\n%s", want, md)
@@ -75,7 +91,7 @@ func TestMLPSMarkdownIncludesNegativeEvidenceAndFindings(t *testing.T) {
 
 	std := Markdown(Input{
 		Title:       "Standard Test",
-		Goal:        "Check outbound section",
+		Goal:        "Check outbound and solver sections",
 		GeneratedAt: time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC),
 		OutboundLogs: []db.OutboundLog{
 			{
@@ -89,8 +105,28 @@ func TestMLPSMarkdownIncludesNegativeEvidenceAndFindings(t *testing.T) {
 				LastSeen:   time.Date(2026, 11, 17, 11, 51, 0, 0, time.UTC),
 			},
 		},
+		SolverState: &db.SolverStateRecord{
+			TaskID:           42,
+			CurrentTier:      3,
+			CurrentTierLabel: "L3_WHITEBOX_GRAYBOX",
+			PrunedMechanisms: []db.SolverPrunedMechanismRecord{
+				{Target: "/api/login", Mechanism: "default_creds", Tier: 1, Reason: "Account locked after 3 tries", EvidenceRef: "traffic#5"},
+			},
+		},
+		BlackboardEntries: []db.BlackboardEntry{
+			{Kind: db.BBKindAnomaly, EpistemicState: db.BBStateQuarantined, Target: "/.env", Topic: "Static canary decoy", EvidenceRef: "traffic#9"},
+		},
 	})
-	if !strings.Contains(std, "Outbound / External Connections Audit") || !strings.Contains(std, "`api.github.com`") {
-		t.Errorf("standard report missing outbound section:\n%s", std)
+	for _, want := range []string{
+		"Outbound / External Connections Audit",
+		"`api.github.com`",
+		"Focused Solver Depth, Pruned Mechanisms & Blackboard Audit",
+		"`L3_WHITEBOX_GRAYBOX`",
+		"`default_creds`",
+		"`quarantined`",
+	} {
+		if !strings.Contains(std, want) {
+			t.Errorf("standard report missing %q:\n%s", want, std)
+		}
 	}
 }

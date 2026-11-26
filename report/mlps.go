@@ -23,6 +23,8 @@ type MLPSInput struct {
 	Checks            []db.TaskCheck
 	Findings          []*db.Node
 	OutboundLogs      []db.OutboundLog
+	SolverState       *db.SolverStateRecord
+	BlackboardEntries []db.BlackboardEntry
 }
 
 var checkStatusLabel = map[string]string{
@@ -140,9 +142,50 @@ func MLPSMarkdown(in MLPSInput) string {
 		b.WriteString("\n")
 	}
 
-	fmt.Fprintf(&b, "## 6. 整改与复测建议\n\n")
+	fmt.Fprintf(&b, "## 6. 深度求解覆盖、已剪枝机制与黑板未闭合线索审计\n\n")
+	if in.SolverState != nil {
+		label := in.SolverState.CurrentTierLabel
+		if label == "" {
+			label = db.SolverTierName(in.SolverState.CurrentTier)
+		}
+		fmt.Fprintf(&b, "- **「唯一求解」最高推进阶梯**：`%s`（%d/5 阶）\n", escapeMDCell(label), in.SolverState.CurrentTier)
+		fmt.Fprintf(&b, "- **已实证剪枝的攻击机制数**：**%d**\n\n", len(in.SolverState.PrunedMechanisms))
+		if len(in.SolverState.PrunedMechanisms) > 0 {
+			b.WriteString("| 目标 | 已剪枝机制 | 阶梯 | 排除依据 | 实证引用 |\n")
+			b.WriteString("| :--- | :--- | :--- | :--- | :--- |\n")
+			for _, pm := range in.SolverState.PrunedMechanisms {
+				fmt.Fprintf(&b, "| `%s` | `%s` | L%d | %s | `%s` |\n",
+					escapeMDCell(pm.Target),
+					escapeMDCell(pm.Mechanism),
+					pm.Tier,
+					escapeMDCell(clipRunes(nz(pm.Reason, "-"), 100)),
+					escapeMDCell(nz(pm.EvidenceRef, "-")),
+				)
+			}
+			b.WriteString("\n")
+		}
+	}
+	if len(in.BlackboardEntries) == 0 {
+		b.WriteString("_本次任务无未闭合的共享黑板线索、搁置接口或隔离诱饵记录。_\n\n")
+	} else {
+		b.WriteString("| 类型 | 确定性状态 | 目标 | 主题/线索摘要 | 前置条件标签 | 证据引用 |\n")
+		b.WriteString("| :--- | :--- | :--- | :--- | :--- | :--- |\n")
+		for _, e := range in.BlackboardEntries {
+			fmt.Fprintf(&b, "| `%s` | `%s` | `%s` | %s | `%s` | `%s` |\n",
+				escapeMDCell(e.Kind),
+				escapeMDCell(e.EpistemicState),
+				escapeMDCell(nz(e.Target, "-")),
+				escapeMDCell(clipRunes(e.Topic, 90)),
+				escapeMDCell(nz(e.PreconditionTag, "-")),
+				escapeMDCell(nz(e.EvidenceRef, "-")),
+			)
+		}
+		b.WriteString("\n")
+	}
+
+	fmt.Fprintf(&b, "## 7. 整改与复测建议\n\n")
 	fmt.Fprintf(&b, "1. 针对上述“未通过”控制点与高/中危漏洞，按业务影响优先级实施整改并回归验证。\n")
-	fmt.Fprintf(&b, "2. 对仍处于“待测试”或“受阻”的检查项（如因生产环境窗口、独立网络区域或人工配合限制），建议在具备测试窗口后补充专项人工验证。\n")
+	fmt.Fprintf(&b, "2. 对仍处于“待测试”、“受阻”或黑板中标记为 `deferred_endpoint`（因缺少凭据/前置条件暂缓）的接口，建议在具备测试窗口与对应角色凭据后补充专项验证。\n")
 	fmt.Fprintf(&b, "3. 整改完成后，可通过 ARTEX 复测流程对相应 Finding 执行回归验证并重新导出报告留档。\n")
 	return b.String()
 }

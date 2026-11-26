@@ -1726,3 +1726,63 @@ export interface TaskChecksSummary {
   na: number;
   blocked: number;
 }
+
+export interface SolverPrunedMechanism {
+  target: string;
+  mechanism: string;
+  tier: number;
+  reason: string;
+  evidence_ref: string;
+  author: string;
+  timestamp: string;
+}
+
+export interface SolverStateRecord {
+  task_id: number;
+  focused_mode: boolean;
+  current_tier: number;
+  current_tier_label: string;
+  pruned_mechanisms: SolverPrunedMechanism[];
+  escalation_log: string[];
+  updated_at: string;
+}
+
+export type BlackboardKind =
+  | "anomaly"
+  | "hypothesis"
+  | "precondition_need"
+  | "deferred_endpoint"
+  | "env_constraint";
+
+export type BlackboardState = "tentative" | "corroborated" | "promoted" | "refuted" | "quarantined";
+
+export interface BlackboardEntry {
+  id: number;
+  task_id: number;
+  kind: BlackboardKind;
+  epistemic_state: BlackboardState;
+  target: string;
+  topic: string;
+  detail: string;
+  precondition_tag?: string;
+  evidence_ref?: string;
+  author: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ResourceLease {
+  task_id: string;
+  resource_key: string;
+  mode: "shared_read" | "exclusive_mutate";
+  holder: string;
+  purpose: string;
+  acquired_at: string;
+  expires_at: string;
+}
+
+export interface TaskSolverSnapshot {
+  solver: SolverStateRecord | null;
+  blackboard: BlackboardEntry[];
+  leases: ResourceLease[];
+}

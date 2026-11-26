@@ -14,12 +14,14 @@ import (
 
 // Input bundles what the report needs.
 type Input struct {
-	Title        string
-	Goal         string
-	GeneratedAt  time.Time
-	AssetCounts  map[string]int
-	Findings     []*db.Node
-	OutboundLogs []db.OutboundLog
+	Title             string
+	Goal              string
+	GeneratedAt       time.Time
+	AssetCounts       map[string]int
+	Findings          []*db.Node
+	OutboundLogs      []db.OutboundLog
+	SolverState       *db.SolverStateRecord
+	BlackboardEntries []db.BlackboardEntry
 }
 
 type findingView struct {
@@ -106,6 +108,48 @@ func Markdown(in Input) string {
 				o.LastSeen.Format("2006-01-02 15:04:05"),
 				escapeMDCell(nz(o.Purpose, "-")),
 				escapeMDCell(clipRunes(nz(o.URLPreview, "-"), 96)),
+			)
+		}
+		b.WriteString("\n")
+	}
+
+	fmt.Fprintf(&b, "## Focused Solver Depth, Pruned Mechanisms & Blackboard Audit\n\n")
+	if in.SolverState != nil {
+		label := in.SolverState.CurrentTierLabel
+		if label == "" {
+			label = db.SolverTierName(in.SolverState.CurrentTier)
+		}
+		fmt.Fprintf(&b, "- **Highest Technique Escalation Stage**: `%s` (%d/5)\n", escapeMDCell(label), in.SolverState.CurrentTier)
+		fmt.Fprintf(&b, "- **Pruned Mechanisms (Negative Proof)**: **%d**\n\n", len(in.SolverState.PrunedMechanisms))
+		if len(in.SolverState.PrunedMechanisms) > 0 {
+			b.WriteString("| Target | Pruned Mechanism | Tier | Reason | Evidence Ref |\n")
+			b.WriteString("| :--- | :--- | :--- | :--- | :--- |\n")
+			for _, pm := range in.SolverState.PrunedMechanisms {
+				fmt.Fprintf(&b, "| `%s` | `%s` | L%d | %s | `%s` |\n",
+					escapeMDCell(pm.Target),
+					escapeMDCell(pm.Mechanism),
+					pm.Tier,
+					escapeMDCell(clipRunes(nz(pm.Reason, "-"), 100)),
+					escapeMDCell(nz(pm.EvidenceRef, "-")),
+				)
+			}
+			b.WriteString("\n")
+		}
+	}
+	if len(in.BlackboardEntries) == 0 {
+		b.WriteString("_No unresolved blackboard leads, deferred surfaces, or quarantined deception artifacts were recorded._\n\n")
+	} else {
+		b.WriteString("### Shared Uncertainty Blackboard Ledger (Deferred Surfaces, Hypotheses & Quarantined Decoys)\n\n")
+		b.WriteString("| Kind | State | Target | Topic | Precondition | Evidence Ref |\n")
+		b.WriteString("| :--- | :--- | :--- | :--- | :--- | :--- |\n")
+		for _, e := range in.BlackboardEntries {
+			fmt.Fprintf(&b, "| `%s` | `%s` | `%s` | %s | `%s` | `%s` |\n",
+				escapeMDCell(e.Kind),
+				escapeMDCell(e.EpistemicState),
+				escapeMDCell(nz(e.Target, "-")),
+				escapeMDCell(clipRunes(e.Topic, 90)),
+				escapeMDCell(nz(e.PreconditionTag, "-")),
+				escapeMDCell(nz(e.EvidenceRef, "-")),
 			)
 		}
 		b.WriteString("\n")

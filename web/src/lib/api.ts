@@ -52,6 +52,10 @@ import type {
   TaskCheckRow,
   TaskChecksSummary,
   TaskFenceConfig,
+  TaskSolverSnapshot,
+  SolverStateRecord,
+  BlackboardEntry,
+  BlackboardKind,
   WordlistKind,
   WordlistMeta,
   FindingStats,
@@ -1362,6 +1366,23 @@ export const api = {
     get<{ rules: ProxyHeaderRule[] }>(`/tasks/${taskId}/proxy-headers`).then((r) => arr(r.rules)),
   updateTaskProxyHeaders: (taskId: string, rules: ProxyHeaderRule[], merge = false) =>
     put<{ updated: boolean; rule_count: number }>(`/tasks/${taskId}/proxy-headers`, { rules, merge }),
+  taskSolver: (taskId: string) => get<TaskSolverSnapshot>(`/tasks/${taskId}/solver`),
+  escalateTaskSolver: (taskId: string, targetTier: number, reason = "") =>
+    post<{ solver: SolverStateRecord }>(`/tasks/${taskId}/solver/escalate`, {
+      target_tier: targetTier,
+      reason,
+    }),
+  postTaskBlackboard: (
+    taskId: string,
+    input: {
+      kind: BlackboardKind;
+      target?: string;
+      topic: string;
+      detail?: string;
+      precondition_tag?: string;
+      evidence_ref?: string;
+    },
+  ) => post<{ entry: BlackboardEntry }>(`/tasks/${taskId}/blackboard`, input),
 
   // ---- enterprise private PoCs (admin JWT only) ----
   pocs: (query?: string, kind?: string) => {

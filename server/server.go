@@ -791,6 +791,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tasks/{id}/outbound", s.listTaskOutbound)
 	mux.HandleFunc("GET /api/tasks/{id}/proxy-headers", s.getTaskProxyHeaders)
 	mux.HandleFunc("PUT /api/tasks/{id}/proxy-headers", s.updateTaskProxyHeaders)
+	mux.HandleFunc("GET /api/tasks/{id}/solver", s.getTaskSolver)
+	mux.HandleFunc("POST /api/tasks/{id}/solver/escalate", s.escalateTaskSolver)
+	mux.HandleFunc("POST /api/tasks/{id}/blackboard", s.postTaskBlackboard)
 	mux.HandleFunc("GET /api/tasks/{id}/lessons", s.taskLessons)
 	mux.HandleFunc("POST /api/tasks/{id}/lessons/extract", s.extractTaskLessons)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTaskMetadata)
@@ -4240,14 +4243,19 @@ func (s *Server) getReport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var outboundLogs []db.OutboundLog
-	if s.m != nil && s.m.pg != nil {
-		if tid, err := strconv.ParseInt(t.ID, 10, 64); err == nil && tid > 0 {
+	var solverState *db.SolverStateRecord
+	var bbEntries []db.BlackboardEntry
+	if tid, err := strconv.ParseInt(t.ID, 10, 64); err == nil && tid > 0 {
+		if s.m != nil && s.m.pg != nil {
 			outboundLogs, _ = s.m.pg.ListTaskOutboundLogs(tid)
 		}
+		solverState = s.loadSolverStateRecord(tid)
+		bbEntries, _ = s.queryBlackboardEntries(s.taskLineageIDs(t, tid), "", "", "", "", 100)
 	}
 	md := report.Markdown(report.Input{
 		Title: t.Description, Goal: t.Goal, GeneratedAt: time.Now(),
 		AssetCounts: counts, Findings: findings, OutboundLogs: outboundLogs,
+		SolverState: solverState, BlackboardEntries: bbEntries,
 	})
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.WriteHeader(200)
