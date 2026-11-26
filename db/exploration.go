@@ -340,6 +340,94 @@ func (s *ExplorationStore) SetNodeState(id int64, state string) error {
 	return err
 }
 
+// CascadeInvalidateResult summarizes a belief-revision cascade when a premise node is falsified.
+type CascadeInvalidateResult struct {
+	InvalidatedNodeID int64   `json:"invalidated_node_id"`
+	HaltedIntentIDs   []int64 `json:"halted_intent_ids"`
+}
+
+// InvalidateNodeAndCascade marks a premise node (e.g. a falsified fact or hypothesis)
+// as 'invalidated' with counter-evidence, bumps its content_version to invalidate
+// any cold-digest cache covering it, and cascades down exploration_edges to halt
+// any dependent 'open' intents so workers do not execute on a refuted premise.
+func (s *ExplorationStore) InvalidateNodeAndCascade(nodeID int64, reason, counterEvidence string) (CascadeInvalidateResult, error) {
+	res := CascadeInvalidateResult{
+		InvalidatedNodeID: nodeID,
+		HaltedIntentIDs:   []int64{},
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "falsified by subsequent verification"
+	}
+	counterEvidence = strings.TrimSpace(counterEvidence)
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return res, err
+	}
+	defer tx.Rollback()
+
+	patch, _ := json.Marshal(map[string]any{
+		"invalidated":        true,
+		"invalidated_reason": reason,
+		"counter_evidence":   counterEvidence,
+	})
+	upd, err := tx.Exec(`
+UPDATE exploration_nodes
+SET state = 'invalidated',
+    blocked_reason = $1,
+    payload = (COALESCE(payload::jsonb, '{}'::jsonb) || $2::jsonb)::text,
+    content_version = content_version + 1
+WHERE id = $3 AND exploration_id = $4`,
+		reason, string(patch), nodeID, s.expID,
+	)
+	if err != nil {
+		return res, err
+	}
+	if n, _ := upd.RowsAffected(); n == 0 {
+		return res, fmt.Errorf("node #%d not found in exploration", nodeID)
+	}
+
+	cascadeReason := fmt.Sprintf("Upstream premise #%d invalidated: %s", nodeID, reason)
+	rows, err := tx.Query(`
+WITH RECURSIVE downstream AS (
+    SELECT dst_id AS id, 1 AS depth
+    FROM exploration_edges
+    WHERE exploration_id = $1 AND src_id = $2
+    UNION
+    SELECT e.dst_id, d.depth + 1
+    FROM exploration_edges e
+    JOIN downstream d ON e.src_id = d.id
+    WHERE e.exploration_id = $1 AND d.depth < 6
+)
+UPDATE exploration_nodes n
+SET state = 'blocked',
+    blocked_reason = $3,
+    content_version = n.content_version + 1
+FROM downstream d
+WHERE n.exploration_id = $1
+  AND n.id = d.id
+  AND n.kind = 'intent'
+  AND n.state = 'open'
+RETURNING n.id`,
+		s.expID, nodeID, cascadeReason,
+	)
+	if err != nil {
+		return res, err
+	}
+	for rows.Next() {
+		var hid int64
+		if scanErr := rows.Scan(&hid); scanErr == nil {
+			res.HaltedIntentIDs = append(res.HaltedIntentIDs, hid)
+		}
+	}
+	_ = rows.Close()
+	if err := tx.Commit(); err != nil {
+		return res, err
+	}
+	return res, nil
+}
+
 // UpdateGoalPayload rewrites a goal node's payload text (and optional vulnclass);
 // scoped to kind='goal' so it can never mutate an intent/fact by id. Returns an
 // error if no such goal exists in this exploration.

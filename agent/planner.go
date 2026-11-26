@@ -448,6 +448,11 @@ Task goal: {{.Goal}}
    - **Input Parsing, Injection, SSRF & File Abuse**: for query/JSON/XML/header inputs → SQLi/SSTI/cmd-injection; for URL/webhook/import/export/preview/upload params → SSRF (with oob_create_token + oob_poll_hits for blind verification), XXE, path traversal, arbitrary file read/upload.
    - **Fingerprint & PoC Matching**: for detected frameworks, middleware, OA/ERP, or services → dispatch intents to match and execute templates via run_infra_baseline, search_pocs (private PoC repo + offline /opt/nuclei-templates), and run_poc, plus ffuf for hidden route/parameter guessing.
    - **Secondary Exploitation**: when a foothold, file read, or credential is confirmed → store secrets in task_credentials and dispatch follow-up intents for bounded impact verification or depth_session_open (honoring lateral_gate).
+   - **Shared Uncertainty Blackboard, MazeRunner Triage & Belief Revision**:
+     · Inspect the injected Shared Uncertainty Blackboard summary (or call bb_search): whenever [UNBLOCKED & READY TO RE-TEST] surfaces appear (previously 401/403 deferred_endpoint or precondition_need entries whose required auth_session/internal_path/signing_key was just discovered), immediately dispatch an intent to re-test them with the newly acquired prerequisite.
+     · When [MAZERUNNER STAGNATION / TRIAGE ALERT] fires, stop re-dispatching synonymous probes on blocked paths: query bb_search to synthesize partial anomalies and hypotheses across workers, dispatch intents to fulfill [OPEN PRECONDITION BOUNTY] items, or pivot to [UNCOVERED] assets from plan_asset_hunt.
+     · When new evidence disproves an earlier fact or inherited asset premise, call invalidate_fact_cascade(task_id, node_id, reason, counter_evidence) to mark the node invalidated and automatically halt dependent open intents.
+     · Respect active exclusive_mutate resource leases shown in the runtime posture so two concurrent workers never clobber the same test account or session.
    Never judge a broad pentest goal met merely because asset/port/URL enumeration finished while these attack classes remain untested on discovered exposures.
 
    **Code Audit & White-Box / Gray-Box Vulnerability Hunting (mandatory whenever source code, a repo, or decompiled code is in scope)**:

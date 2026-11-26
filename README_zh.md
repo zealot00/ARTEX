@@ -33,9 +33,14 @@ AI 自主渗透测试与企业内网横向防御演练平台（Go 后端 + Next.
 - **加密且模型盲态的字典保险库**：通过 `/system/settings` 或 Admin API（`/api/wordlists`）上传字典，使用 AES-256-GCM 加密存储于 `<keyDir>/wordlists/`（不进入 PostgreSQL、工作区及 LLM 上下文），支持 `run_credential_audit`（`hydra`）与防锁定低频密码喷洒 `run_password_spray`（`nxc`，单轮上限 1–3 个密码）。
 - **持久化深度会话与多跳穿透**：通过 `depth_session_open` / `exec` / `list` / `close` 管理任务级 `pty`、`ssh`（支持 `jump_session_id` 多跳级联、内置 `127.0.0.1` SOCKS5 代理与服务端凭据解析）和 `tunnel` 进程，任务结束或删除时自动清理。
 - **资产驱动攻击面矩阵与灰盒/白盒深度联动**：
-  - **资产驱动挖掘矩阵（`plan_asset_hunt`）**：服务端实时分析任务已登记的 `http_service`、`endpoint`、`other_service` / `ip` 与 Intent 覆盖状态，按参数语义（IDOR、SSRF、并发竞态、文件/模板、注入）与开源指纹（内置 25 类常见开源系统仓库映射）生成未覆盖高优挖掘清单并注入每一轮 Planner。
+  - **资产驱动挖掘矩阵（`plan_asset_hunt`）**：服务端实时分析任务已登记的 `http_service`、`endpoint`、`other_service` / `ip` 与 Intent 覆盖状态，按参数语义（IDOR、SSRF、并发竞态、文件/模板、注入）、跨任务继承实效门控（`INHERITED/HISTORICAL ASSET` 强制复核）与开源指纹（内置 25 类常见开源系统仓库映射）生成未覆盖高优挖掘清单并注入每一轮 Planner。
   - **前端 JS / OpenAPI 契约自动提取（`extract_web_contracts`）**：自动拉取目标站点 Swagger/OpenAPI（`/v3/api-docs`、`/swagger.json` 等）与同源 `.js` Bundle，提取隐藏接口与参数并自动回写任务资产图谱。
   - **开源组件源码获取与语义级代码审计（`oss_fetch_source` + `code_scan_semgrep`）**：识别到开源组件或提供 `.zip`/`.jar`/`.war` 制品后，按版本号受控拉取/解压至任务审计目录 `<task_dir>/oss-src/<component>`，联动 Semgrep 与原生多语言汇点/路由鉴权缺失扫描器（`code_map_entrypoints`、`code_scan_sinks`、`code_audit_auth_gaps`、`code_trace_symbol`、`code_read_context`、`code_audit_deps`），再回连在线资产进行动态灰盒验证。
+- **Cairn 式动态不确定性共享黑板、MazeRunner 停滞复核与级联失效引擎**：
+  - **共享不确定性黑板（`bb_record` / `bb_search` / `bb_corroborate`）**：支持并发 Worker 与关联子任务在执行中途实时记录与检索 5 类不确定性知识（`anomaly` 异象碎片、`hypothesis` 待验假设、`precondition_need` 前置悬赏、`deferred_endpoint` 401/403 搁置接口、`env_constraint` WAF/环境特征），按 `tentative` → `corroborated` → `promoted` / `refuted` / `quarantined` 状态机演进，绝不被冷节点压缩抹除。
+  - **前置条件就绪自动重激活 & MazeRunner 停滞复核**：当新凭据、新代理头、新会话或新路径碎片入库时，服务端代码自动匹配黑板上的 `deferred_endpoint` 与 `precondition_need`，直接推送 `[UNBLOCKED & READY TO RE-TEST]`；连续多轮无新产出时自动切入 MazeRunner 复核视图。
+  - **反诱导/蜜罐差分门控与图谱级联失效（`invalidate_fact_cascade`）**：自动拦截与良性基准哈希相同（`baseline_hash == probe_hash`）或命中已知诱饵 Canary 的虚假响应并隔离为 `quarantined`；当已有 Fact 被证伪时，沿探索图边自动级联挂起所有依赖该错误前提的下游 `open` Intent。
+  - **并发资源与会话租约协调器（`resource_lease_acquire` / `resource_lease_release`）**：对测试账号、会话和限流主机提供 `shared_read` / `exclusive_mutate` 租约互斥，防止并发 Worker 互相踩踏会话或触发账号锁定。
 - **高强度业务逻辑与代理鉴权增强**：内置基于录制流量的批量跨角色鉴权核查工具 `traffic_fuzz_audit`、双账号/无账号越权对比工具 `authz_replay`、同步并发条件竞争探测工具 `race_probe`（`prod_safe_mode` 下限流 5 并发）、[skills/biz-logic-audit](skills/biz-logic-audit/SKILL.md) 逻辑跳步/敏感字段泄漏审计剧本，以及按 Host 严格隔离的代理鉴权头自动注入（`/api/tasks/{id}/proxy-headers`）。
 - **任务外联审计与报告自证**：自动记录任务执行期间的外部网络外联（`task_outbound_logs`、`GET /api/tasks/{id}/outbound`），并自动写入标准渗透报告与等保 2.0 报告，便于上层流量监控溯源核查。
 - **电子围栏与立足点门控**：支持 CIDR / IP / 域名 / 通配符 / URL 前缀 Fail-Closed 拦截（含 `30x` 跳转校验），以及 `wait_for_task_id` 零消耗休眠挂起、`POST /api/tasks/{id}/lateral/approve` 原地审批恢复横向移动。

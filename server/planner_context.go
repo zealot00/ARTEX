@@ -118,7 +118,48 @@ func (s *Server) buildPlannerRuntimeContext(taskID int64, taskDir string) string
 		}
 	}
 
-	// 6. Available PoC & wordlist inventory
+	// 6. Shared Uncertainty Blackboard & MazeRunner Stagnation Triage
+	bbTriage := s.computeBlackboardTriage(t, taskID)
+	if bbTriage.TotalEntries > 0 || bbTriage.StagnationDetected {
+		fmt.Fprintf(&b, "- Shared Uncertainty Blackboard (Cairn/MazeRunner triage): %d entries (unblocked_ready=%d, open_bounties=%d, hypotheses=%d, anomalies=%d, quarantined_deception=%d)\n",
+			bbTriage.TotalEntries, len(bbTriage.UnblockedSurfaces), len(bbTriage.OpenPreconditionNeed), len(bbTriage.ActiveHypotheses), len(bbTriage.RecentAnomalies), len(bbTriage.QuarantinedDeception))
+		if bbTriage.StagnationDetected {
+			fmt.Fprintf(&b, "  -> [MAZERUNNER STAGNATION / TRIAGE ALERT]: %s\n", bbTriage.StagnationReason)
+		}
+		for i, u := range bbTriage.UnblockedSurfaces {
+			if i >= 4 {
+				break
+			}
+			fmt.Fprintf(&b, "  -> [UNBLOCKED & READY TO RE-TEST] bb#%d (%s) target=%s topic=%q (precondition %q is now satisfied!)\n",
+				u.ID, u.Kind, u.Target, u.Topic, u.PreconditionTag)
+		}
+		for i, p := range bbTriage.OpenPreconditionNeed {
+			if i >= 4 {
+				break
+			}
+			fmt.Fprintf(&b, "  -> [OPEN PRECONDITION BOUNTY] bb#%d target=%s need=%q topic=%q — dispatch or steer workers to locate this prerequisite\n",
+				p.ID, p.Target, p.PreconditionTag, p.Topic)
+		}
+		for i, q := range bbTriage.QuarantinedDeception {
+			if i >= 3 {
+				break
+			}
+			fmt.Fprintf(&b, "  -> [QUARANTINED DECEPTION / CANARY WARNING] bb#%d target=%s topic=%q — DO NOT trust or report without independent out-of-band proof\n",
+				q.ID, q.Target, q.Topic)
+		}
+	}
+
+	// 7. Concurrent Resource & Session Leases
+	if leases := globalLeaseMgr.List(t.ID); len(leases) > 0 {
+		var leaseDescs []string
+		for _, l := range leases {
+			leaseDescs = append(leaseDescs, fmt.Sprintf("%s[%s by %s]", l.ResourceKey, l.Mode, l.Holder))
+		}
+		fmt.Fprintf(&b, "- Active concurrent resource/session leases: %s (avoid dispatching conflicting state-mutating intents onto exclusive_mutate resources)\n",
+			strings.Join(leaseDescs, ", "))
+	}
+
+	// 8. Available PoC & wordlist inventory
 	filePocs := len(loadPocsFromDir(pocsDir()))
 	wlCount := 0
 	if s.m.pg != nil {
@@ -126,7 +167,7 @@ func (s *Server) buildPlannerRuntimeContext(taskID int64, taskDir string) string
 			wlCount = len(wls)
 		}
 	}
-	fmt.Fprintf(&b, "- Enterprise tooling inventory: %d file-based PoCs in %s (use run_infra_baseline / search_pocs / run_poc), %d encrypted wordlists (use list_wordlists / run_credential_audit / run_password_spray), internal OOB callback (oob_create_token / oob_poll_hits), business-logic & traffic probes (authz_replay / race_probe / extract_web_contracts / traffic_fuzz_audit), OSS source auditing (oss_fetch_source / code_scan_semgrep).\n",
+	fmt.Fprintf(&b, "- Enterprise tooling inventory: %d file-based PoCs in %s (use run_infra_baseline / search_pocs / run_poc), %d encrypted wordlists (use list_wordlists / run_credential_audit / run_password_spray), internal OOB callback (oob_create_token / oob_poll_hits), business-logic & traffic probes (authz_replay / race_probe / extract_web_contracts / traffic_fuzz_audit), OSS source auditing (oss_fetch_source / code_scan_semgrep), shared uncertainty blackboard & belief revision (bb_record / bb_search / bb_corroborate / invalidate_fact_cascade), concurrent session lease coordinator (resource_lease_acquire / resource_lease_release).\n",
 		filePocs, pocsDir(), wlCount)
 
 	return b.String()

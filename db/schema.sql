@@ -1687,3 +1687,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_task_outbound_uniq
     ON task_outbound_logs(task_id, source, protocol, target_host, target_port);
 CREATE INDEX IF NOT EXISTS idx_task_outbound_task
     ON task_outbound_logs(task_id, last_seen DESC);
+
+-- =====================================================================
+-- Shared Uncertainty Blackboard (Cairn-style ephemeral & cross-worker clues)
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS blackboard_entries (
+    id               BIGSERIAL PRIMARY KEY,
+    task_id          BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    kind             TEXT NOT NULL CHECK (kind IN ('anomaly','hypothesis','precondition_need','deferred_endpoint','env_constraint')),
+    epistemic_state  TEXT NOT NULL DEFAULT 'tentative' CHECK (epistemic_state IN ('tentative','corroborated','promoted','refuted','quarantined')),
+    target           TEXT NOT NULL DEFAULT '',
+    topic            TEXT NOT NULL,
+    detail           TEXT NOT NULL DEFAULT '',
+    precondition_tag TEXT NOT NULL DEFAULT '',
+    evidence_ref     TEXT NOT NULL DEFAULT '',
+    author           TEXT NOT NULL DEFAULT 'worker',
+    corroborations   JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_blackboard_task_state
+    ON blackboard_entries(task_id, epistemic_state, kind, updated_at DESC);
+DROP TRIGGER IF EXISTS trg_blackboard_entries_upd ON blackboard_entries;
+CREATE TRIGGER trg_blackboard_entries_upd BEFORE UPDATE ON blackboard_entries
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();

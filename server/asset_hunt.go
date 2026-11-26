@@ -183,7 +183,7 @@ func BuildAssetHuntMatrix(taskID int64, assets []*db.Asset, coveredIDs map[int64
 		} else {
 			matrix.UncoveredAssets++
 		}
-		rec, ok := recommendForAsset(a, covered)
+		rec, ok := recommendForAsset(taskID, a, covered)
 		if ok {
 			recs = append(recs, rec)
 		}
@@ -205,7 +205,37 @@ func BuildAssetHuntMatrix(taskID int64, assets []*db.Asset, coveredIDs map[int64
 	return matrix
 }
 
-func recommendForAsset(a *db.Asset, covered bool) (HuntRecommendation, bool) {
+func isInheritedOrHistoricalAsset(taskID int64, a *db.Asset) bool {
+	if a == nil || taskID <= 0 {
+		return false
+	}
+	src := strings.ToLower(strings.TrimSpace(a.TaskSource))
+	if src == "inherited" || src == "company_scope" || src == "historical" {
+		return true
+	}
+	if len(a.TaskIDs) > 1 && a.TaskIDs[0] != taskID {
+		return true
+	}
+	return false
+}
+
+func applyFreshnessGate(taskID int64, a *db.Asset, rec HuntRecommendation) HuntRecommendation {
+	if isInheritedOrHistoricalAsset(taskID, a) {
+		rec.Tags = dedupStrings(append(rec.Tags, "inherited_needs_reverify"))
+		rec.Rationale = "[INHERITED/HISTORICAL ASSET — re-verify liveness, version, and current task scope before trusting historical properties] " + rec.Rationale
+	}
+	return rec
+}
+
+func recommendForAsset(taskID int64, a *db.Asset, covered bool) (HuntRecommendation, bool) {
+	rec, ok := recommendForAssetCore(a, covered)
+	if !ok {
+		return HuntRecommendation{}, false
+	}
+	return applyFreshnessGate(taskID, a, rec), true
+}
+
+func recommendForAssetCore(a *db.Asset, covered bool) (HuntRecommendation, bool) {
 	switch a.Type {
 	case "http_service":
 		target := strings.TrimSpace(a.URL)
@@ -383,6 +413,12 @@ func (s *Server) huntTools() []actool.CoreTool {
 		s.toolTrafficFuzzAudit(),
 		s.toolOSSFetchSource(),
 		s.toolCodeScanSemgrep(),
+		s.toolBBRecord(),
+		s.toolBBSearch(),
+		s.toolBBCorroborate(),
+		s.toolInvalidateFactCascade(),
+		s.toolResourceLeaseAcquire(),
+		s.toolResourceLeaseRelease(),
 	}
 }
 

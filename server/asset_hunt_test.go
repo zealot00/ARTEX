@@ -253,3 +253,191 @@ VALUES(?,?,?,?,?)`,
 	}
 }
 
+func TestUncertaintyBlackboardAntiDeceptionAndAutoReactivation(t *testing.T) {
+	tr, err := traffic.Open(t.TempDir(), "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tr.Close()
+
+	task := &Task{ID: "95", Guard: guard.New()}
+	s := &Server{m: &Manager{tasks: map[string]*Task{"95": task}, traffic: tr}}
+
+	recTool := s.toolBBRecord()
+	searchTool := s.toolBBSearch()
+	corrTool := s.toolBBCorroborate()
+
+	// 1. Worker A posts a deferred 403 endpoint waiting for auth_session and a precondition_need waiting for internal_path.
+	resDef, err := recTool.Call(context.Background(), json.RawMessage(`{
+		"task_id": "95",
+		"kind": "deferred_endpoint",
+		"target": "http://10.10.1.5:8080/api/v1/finance/export",
+		"topic": "Finance export API returned 403 without session token",
+		"precondition_tag": "auth_session",
+		"author": "intent#1"
+	}`), nil)
+	if err != nil || resDef.IsError {
+		t.Fatalf("bb_record deferred_endpoint failed: err=%v res=%+v", err, resDef)
+	}
+
+	resNeed, err := recTool.Call(context.Background(), json.RawMessage(`{
+		"task_id": "95",
+		"kind": "precondition_need",
+		"target": "http://10.10.1.5:8080/api/v1/download",
+		"topic": "File read primitive confirmed, need deployment root path",
+		"precondition_tag": "internal_path",
+		"author": "intent#2"
+	}`), nil)
+	if err != nil || resNeed.IsError {
+		t.Fatalf("bb_record precondition_need failed: err=%v res=%+v", err, resNeed)
+	}
+
+	// 2. Anti-Deception Gate: posting a Gingerbread/AWS canary token or identical baseline/probe hash must auto-quarantine.
+	resCanary, err := recTool.Call(context.Background(), json.RawMessage(`{
+		"task_id": "95",
+		"kind": "anomaly",
+		"target": "http://10.10.1.5:8080/.env",
+		"topic": "Found AWS key AKIAIOSFODNN7EXAMPLE in response",
+		"author": "intent#3"
+	}`), nil)
+	if err != nil || resCanary.IsError {
+		t.Fatalf("bb_record canary failed: err=%v res=%+v", err, resCanary)
+	}
+	if !strings.Contains(resultText(resCanary), `"quarantined":true`) || !strings.Contains(resultText(resCanary), `"epistemic_state":"quarantined"`) {
+		t.Fatalf("expected canary entry to be auto-quarantined, got: %s", resultText(resCanary))
+	}
+
+	resSameHash, err := recTool.Call(context.Background(), json.RawMessage(`{
+		"task_id": "95",
+		"kind": "hypothesis",
+		"target": "http://10.10.1.5:8080/api/debug",
+		"topic": "Suspected debug bypass",
+		"baseline_hash": "deadbeef01",
+		"probe_hash": "deadbeef01",
+		"author": "intent#3"
+	}`), nil)
+	if err != nil || resSameHash.IsError || !strings.Contains(resultText(resSameHash), `"quarantined":true`) {
+		t.Fatalf("expected identical baseline/probe hash to be quarantined, got: %s", resultText(resSameHash))
+	}
+
+	// 3. Worker B discovers the internal path and posts a corroborated anomaly with precondition_tag="internal_path".
+	resPath, err := recTool.Call(context.Background(), json.RawMessage(`{
+		"task_id": "95",
+		"kind": "anomaly",
+		"target": "http://10.10.1.5:8080/actuator/env",
+		"topic": "Actuator leaked app root /opt/corp/finance-service",
+		"precondition_tag": "internal_path",
+		"author": "intent#4"
+	}`), nil)
+	if err != nil || resPath.IsError {
+		t.Fatalf("bb_record anomaly failed: err=%v res=%+v", err, resPath)
+	}
+	var posted struct {
+		Entry db.BlackboardEntry `json:"entry"`
+	}
+	_ = json.Unmarshal([]byte(resultText(resPath)), &posted)
+
+	resCorr, err := corrTool.Call(context.Background(), json.RawMessage(`{
+		"entry_id": `+jsonNumber(posted.Entry.ID)+`,
+		"epistemic_state": "corroborated",
+		"note": "Verified path in stack trace",
+		"author": "intent#5"
+	}`), nil)
+	if err != nil || resCorr.IsError || !strings.Contains(resultText(resCorr), `"epistemic_state":"corroborated"`) {
+		t.Fatalf("bb_corroborate failed: err=%v res=%+v", err, resCorr)
+	}
+
+	// Configure proxy auth headers for task 95 (satisfies auth_session precondition).
+	tr.SetTaskHostHeaderRules("95", []traffic.HostHeaderRule{
+		{TaskID: "95", Host: "10.10.1.5", Headers: map[string]string{"Authorization": "Bearer live-jwt"}, Overwrite: true},
+	})
+
+	// 4. Verify bb_search and Planner runtime context surface UNBLOCKED surfaces and QUARANTINED warnings.
+	resSearch, err := searchTool.Call(context.Background(), json.RawMessage(`{"task_id":"95"}`), nil)
+	if err != nil || resSearch.IsError || !strings.Contains(resultText(resSearch), "Finance export API") {
+		t.Fatalf("bb_search failed: err=%v res=%+v", err, resSearch)
+	}
+
+	ctxText := s.buildPlannerRuntimeContext(95, t.TempDir())
+	for _, mustContain := range []string{
+		"[UNBLOCKED & READY TO RE-TEST]",
+		"Finance export API returned 403 without session token",
+		"File read primitive confirmed, need deployment root path",
+		"[QUARANTINED DECEPTION / CANARY WARNING]",
+	} {
+		if !strings.Contains(ctxText, mustContain) {
+			t.Fatalf("expected PlannerRuntimeContext to contain %q, got:\n%s", mustContain, ctxText)
+		}
+	}
+}
+
+func TestConcurrentResourceLeaseCoordinatorAndFreshnessGate(t *testing.T) {
+	task := &Task{ID: "96"}
+	s := &Server{m: &Manager{tasks: map[string]*Task{"96": task}}}
+
+	acqTool := s.toolResourceLeaseAcquire()
+	relTool := s.toolResourceLeaseRelease()
+
+	// Worker 1 acquires exclusive_mutate lease on cred:admin.
+	r1, err := acqTool.Call(context.Background(), json.RawMessage(`{
+		"task_id": "96",
+		"resource_key": "cred:admin",
+		"mode": "exclusive_mutate",
+		"holder": "intent#10",
+		"purpose": "password reset workflow test"
+	}`), nil)
+	if err != nil || r1.IsError || !strings.Contains(resultText(r1), `"acquired":true`) {
+		t.Fatalf("expected lease acquisition to succeed, got: %s", resultText(r1))
+	}
+
+	// Worker 2 attempting to acquire cred:admin concurrently must be blocked with conflict_reason.
+	r2, err := acqTool.Call(context.Background(), json.RawMessage(`{
+		"task_id": "96",
+		"resource_key": "cred:admin",
+		"mode": "shared_read",
+		"holder": "intent#11",
+		"purpose": "authenticated API crawl"
+	}`), nil)
+	if err != nil || r2.IsError || !strings.Contains(resultText(r2), `"acquired":false`) {
+		t.Fatalf("expected concurrent conflicting lease to be rejected, got: %s", resultText(r2))
+	}
+
+	// Planner runtime context must show active lease.
+	ctxText := s.buildPlannerRuntimeContext(96, t.TempDir())
+	if !strings.Contains(ctxText, "cred:admin[exclusive_mutate by intent#10]") {
+		t.Fatalf("expected active lease in planner context, got:\n%s", ctxText)
+	}
+
+	// Release by intent#10 unblocks intent#11.
+	_, _ = relTool.Call(context.Background(), json.RawMessage(`{"task_id":"96","resource_key":"cred:admin","holder":"intent#10"}`), nil)
+	r3, err := acqTool.Call(context.Background(), json.RawMessage(`{
+		"task_id": "96",
+		"resource_key": "cred:admin",
+		"mode": "shared_read",
+		"holder": "intent#11",
+		"purpose": "authenticated API crawl"
+	}`), nil)
+	if err != nil || r3.IsError || !strings.Contains(resultText(r3), `"acquired":true`) {
+		t.Fatalf("expected lease acquisition after release to succeed, got: %s", resultText(r3))
+	}
+
+	// Verify Inherited Asset Freshness Gate in BuildAssetHuntMatrix.
+	inheritedAsset := &db.Asset{
+		ID:         501,
+		Type:       "http_service",
+		URL:        "http://10.10.9.9:8080",
+		TaskSource: "inherited",
+		TaskIDs:    []int64{1, 96},
+	}
+	matrix := BuildAssetHuntMatrix(96, []*db.Asset{inheritedAsset}, nil, 10)
+	if len(matrix.Recommendations) != 1 || !strings.Contains(matrix.Recommendations[0].Rationale, "INHERITED/HISTORICAL ASSET") {
+		t.Fatalf("expected inherited freshness gate warning on asset #501, got: %+v", matrix.Recommendations)
+	}
+}
+
+func jsonNumber(n int64) string {
+	b, _ := json.Marshal(n)
+	return string(b)
+}
+
+

@@ -157,6 +157,13 @@ docker compose up -d --build
 - **开源组件源码/制品获取（`oss_fetch_source`）**：识别到常见开源组件（如 RuoYi、JeecgBoot、Nacos、JumpServer、Grafana、Harbor、MinIO 等）或本地 `.zip`/`.jar`/`.war` 归档时，自动按版本 tag 浅克隆或安全解压至 `<task_dir>/oss-src/<component>`。
 - **Semgrep + 原生多语言静态审计（`code_scan_semgrep` & `codeaudit` 工具集）**：在审计目录上运行 `code_scan_semgrep`（支持 `ARTEX_SEMGREP_RULES_DIR` 指定离线规则库）、`code_map_entrypoints`、`code_scan_sinks`、`code_audit_auth_gaps`、`code_trace_symbol`、`code_read_context` 与 `code_audit_deps`，定位精确 `file:line` 后回连在线资产完成灰盒实锤验证。
 
+### 5.6 动态不确定性共享黑板、MazeRunner 停滞复核与并发租约协调
+
+- **动态不确定性共享黑板（`bb_record` / `bb_search` / `bb_corroborate`）**：Worker 在探测中途可将未解碎片（`anomaly`）、待验假设（`hypothesis`）、前置条件悬赏（`precondition_need`）、401/403 暂缓接口（`deferred_endpoint`）与 WAF 约束（`env_constraint`）实时写入共享黑板。当任务获取到新凭据、新代理头或新路径碎片时，服务端自动将满足前置条件的条目升级为 `[UNBLOCKED & READY TO RE-TEST]` 推送给 Planner。
+- **反蜜罐诱导差分门控**：`bb_record` 与 `bb_corroborate` 内置 `DetectDeceptionIndicators` 门控，若探测响应哈希与良性基准相同（`baseline_hash == probe_hash`）或包含已知静态 Canary 诱饵特征，系统自动将其标记为 `quarantined`，防止污染全局推理。
+- **前置结论推翻与图谱级联失效（`invalidate_fact_cascade`）**：当某条既有 Fact 被反证推翻时，调用 `invalidate_fact_cascade` 会将其标记为 `invalidated`，刷新冷节点摘要缓存版本号，并沿 `exploration_edges` 递归暂停所有依赖该前提的下游待执行 Intent。
+- **并发 Worker 资源/会话租约（`resource_lease_acquire` / `resource_lease_release`）**：在对共享账号、持久化会话或限流主机执行状态变更操作（如改密、登出、喷洒、并发竞态）前申请 `exclusive_mutate` 租约，避免并发 Worker 互相破坏认证态。
+
 ---
 
 ## 6. 电子围栏、立足点门控与持久化深度会话
