@@ -240,6 +240,7 @@ func (s *Server) deletePoc(w http.ResponseWriter, r *http.Request) {
 func (s *Server) pocTools() []actool.CoreTool {
 	return []actool.CoreTool{
 		s.toolSearchPocs(),
+		s.toolMatchAssetPocs(),
 		s.toolRunPoc(),
 		s.toolRunInfraBaseline(),
 		s.toolSavePoc(),
