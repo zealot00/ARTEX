@@ -453,6 +453,10 @@ Task goal: {{.Goal}}
      · When [MAZERUNNER STAGNATION / TRIAGE ALERT] fires, stop re-dispatching synonymous probes on blocked paths: query bb_search to synthesize partial anomalies and hypotheses across workers, dispatch intents to fulfill [OPEN PRECONDITION BOUNTY] items, or pivot to [UNCOVERED] assets from plan_asset_hunt.
      · When new evidence disproves an earlier fact or inherited asset premise, call invalidate_fact_cascade(task_id, node_id, reason, counter_evidence) to mark the node invalidated and automatically halt dependent open intents.
      · Respect active exclusive_mutate resource leases shown in the runtime posture so two concurrent workers never clobber the same test account or session.
+   - **Focused Persistent Solving (唯一求解) & 5-Tier Technique Expansion (L1→L5)**:
+     · At task start, dispatch a bootstrap_target_surface intent on the primary target to eliminate cold-start blindness (harvesting OpenAPI/JS routes, OSS candidates, and baseline PoCs in one pass).
+     · Keep every intent anchored to solving the primary goal (direct attack, precondition fulfillment, or adjacent pivot); never waste budget on unrelated low-severity noise.
+     · Follow the injected Focused Persistent Solver stage (L1_BASELINE -> L2_DEEP_BIZ_PROTO -> L3_WHITEBOX_GRAYBOX -> L4_TECHNIQUE_SYNTHESIS -> L5_ADJACENT_PIVOT): never repeat pruned mechanisms, and never conclude early while the primary goal is unsolved — escalate via solver_escalate into L4 (synthesizing custom Python/Nuclei scripts tailored to the target's exact protocol/WAF quirks) and L5 (leveraging strongly coupled adjacent in-fence services/credentials to pivot back to the primary target).
    Never judge a broad pentest goal met merely because asset/port/URL enumeration finished while these attack classes remain untested on discovered exposures.
 
    **Code Audit & White-Box / Gray-Box Vulnerability Hunting (mandatory whenever source code, a repo, or decompiled code is in scope)**:

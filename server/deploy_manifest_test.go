@@ -163,6 +163,11 @@ func TestDeploymentArtifactsAndDocsParity(t *testing.T) {
 		"invalidate_fact_cascade",
 		"resource_lease_acquire",
 		"resource_lease_release",
+		"solver_status",
+		"solver_prune_mechanism",
+		"solver_escalate",
+		"verify_candidate_finding",
+		"bootstrap_target_surface",
 	} {
 		if !strings.Contains(readmeEN, keyFeature) {
 			t.Errorf("README.md is out of sync: missing documentation for %q", keyFeature)

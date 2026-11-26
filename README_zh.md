@@ -41,6 +41,7 @@ AI 自主渗透测试与企业内网横向防御演练平台（Go 后端 + Next.
   - **前置条件就绪自动重激活 & MazeRunner 停滞复核**：当新凭据、新代理头、新会话或新路径碎片入库时，服务端代码自动匹配黑板上的 `deferred_endpoint` 与 `precondition_need`，直接推送 `[UNBLOCKED & READY TO RE-TEST]`；连续多轮无新产出时自动切入 MazeRunner 复核视图。
   - **反诱导/蜜罐差分门控与图谱级联失效（`invalidate_fact_cascade`）**：自动拦截与良性基准哈希相同（`baseline_hash == probe_hash`）或命中已知诱饵 Canary 的虚假响应并隔离为 `quarantined`；当已有 Fact 被证伪时，沿探索图边自动级联挂起所有依赖该错误前提的下游 `open` Intent。
   - **并发资源与会话租约协调器（`resource_lease_acquire` / `resource_lease_release`）**：对测试账号、会话和限流主机提供 `shared_read` / `exclusive_mutate` 租约互斥，防止并发 Worker 互相踩踏会话或触发账号锁定。
+  - **「唯一求解」持续深挖引擎、物理两阶段收尾、提交闸门与 `Bootstrap` 快路径（`solver_status` / `solver_prune_mechanism` / `solver_escalate` / `verify_candidate_finding` / `bootstrap_target_surface`）**：锁定唯一主目标并驱动 5 阶手段自动扩充状态机（`L1` 标准化基线 → `L2` 深度业务/协议 → `L3` 白盒/灰盒源码 → `L4` 定制脚本/PoC 自造 → `L5` 强关联旁路迂回求解），在 Worker 预算耗尽进入 `Conclude` 收尾时物理剥离全部主动探测工具防止超时丢进度，并引入 Dispatcher 提交闸门过滤未实证静态线索与诱饵。
 - **高强度业务逻辑与代理鉴权增强**：内置基于录制流量的批量跨角色鉴权核查工具 `traffic_fuzz_audit`、双账号/无账号越权对比工具 `authz_replay`、同步并发条件竞争探测工具 `race_probe`（`prod_safe_mode` 下限流 5 并发）、[skills/biz-logic-audit](skills/biz-logic-audit/SKILL.md) 逻辑跳步/敏感字段泄漏审计剧本，以及按 Host 严格隔离的代理鉴权头自动注入（`/api/tasks/{id}/proxy-headers`）。
 - **任务外联审计与报告自证**：自动记录任务执行期间的外部网络外联（`task_outbound_logs`、`GET /api/tasks/{id}/outbound`），并自动写入标准渗透报告与等保 2.0 报告，便于上层流量监控溯源核查。
 - **电子围栏与立足点门控**：支持 CIDR / IP / 域名 / 通配符 / URL 前缀 Fail-Closed 拦截（含 `30x` 跳转校验），以及 `wait_for_task_id` 零消耗休眠挂起、`POST /api/tasks/{id}/lateral/approve` 原地审批恢复横向移动。

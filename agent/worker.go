@@ -159,10 +159,33 @@ func (w *Worker) SetRunTimeout(run time.Duration) {
 	w.runTimeout = run
 }
 
+// workerConcludeHiddenTools lists all active probing/execution tools that are
+// physically stripped from the worker's tool list when entering the Conclude
+// (settlement/wrap-up) phase, mirroring Cairn's two-phase Main -> Conclude
+// discipline so a timed-out worker can only write back facts, blackboard clues,
+// pruned mechanisms, assets, and findings.
+var workerConcludeHiddenTools = []string{
+	"Bash",
+	"WebFetch",
+	"web_search",
+	"run_poc",
+	"run_infra_baseline",
+	"authz_replay",
+	"race_probe",
+	"extract_web_contracts",
+	"traffic_fuzz_audit",
+	"run_credential_audit",
+	"run_password_spray",
+	"depth_session_open",
+	"depth_session_exec",
+	"oss_fetch_source",
+	"bootstrap_target_surface",
+}
+
 // settleWrapUpPrompt is injected by the SDK settlement phase when a worker hits its
 // turn/time budget: stop probing, write back what was found, then end with a
 // plain-text one-liner (which becomes this run's displayed result).
-const settleWrapUpPrompt = "You are about to be terminated because your budget is exhausted. Do not run any more commands/probes. Please, in order: (1) write back everything you have identified above but not yet written back, item by item — new assets with insert_assets, exploration conclusions/facts with record_fact, confirmed findings with report_finding; (2) **finally, in a single standalone sentence of plain text** summarize what you did and which key conclusions you reached (this sentence is shown as this run's result — be sure to output it)."
+const settleWrapUpPrompt = "You have entered the Conclude (wrap-up) phase because your exploration budget is exhausted; all active probing tools are disabled. Please, in order: (1) write back every confirmed result — new assets with insert_assets, conclusions with record_fact, verified vulnerabilities with report_finding; (2) preserve any unfinished leads, 401/403 endpoints, or missing prerequisites on the Shared Uncertainty Blackboard via bb_record and record any thoroughly disproved attack mechanisms via solver_prune_mechanism (release any held leases via resource_lease_release); (3) **finally, in a single standalone sentence of plain text** summarize what you confirmed and what remains unfinished."
 
 func NewWorker(prov llm.Provider, model, workDir string, tx *transcript.Store, window, maxTurns int, extra ...actool.CoreTool) *Worker {
 	return &Worker{prov: prov, model: model, workDir: workDir, tx: tx, window: window, maxTurns: maxTurns, extraTools: extra}
@@ -257,6 +280,8 @@ const workerDefaultTmpl = `You are an "executor" (work agent) of a network-secur
   · Call bb_search at the start of your run (or when blocked) to check anomalies, WAF quirks (env_constraint), hypotheses, and open precondition bounties (precondition_need) posted by concurrent workers.
   · Whenever you observe an uncertain clue (an internal header/path leak, unused JS parameter/salt, 401/403 endpoint needing credentials, or a primitive blocked on a missing path/token), immediately post it via bb_record (kind in anomaly | hypothesis | precondition_need | deferred_endpoint | env_constraint) so other workers can corroborate or use it in real time; pass baseline_hash and probe_hash when comparing responses so the anti-deception gate can quarantine static honeypot decoys.
   · When your findings corroborate or refute an existing blackboard entry, call bb_corroborate with your independent evidence_ref; if you disprove an existing exploration fact, call invalidate_fact_cascade.
+  · Before calling report_finding on a high-stakes vulnerability, run verify_candidate_finding (Dispatcher Commit Gate) with proof_basis, measured_impact, evidence_ref, and optional baseline_hash/probe_hash so unexecuted leads automatically downgrade to blackboard hypotheses and static decoys are quarantined.
+  · When you thoroughly disprove an attack mechanism on a target, call solver_prune_mechanism(task_id, target, mechanism, reason, evidence_ref) so the Focused Persistent Solver escalates to orthogonal higher-tier techniques (L1->L5) instead of repeating failed probes; on a brand-new web target, run bootstrap_target_surface first.
   · Before running state-mutating or lockout-sensitive operations on a shared account/session/host (password spray, password change, logout, race_probe), acquire an exclusive lease via resource_lease_acquire and release it with resource_lease_release when done.
 
 **Write back as you discover** (only what's written into the graph counts; what's in your head/text doesn't; write every result immediately — don't save it for the end and lose it when the step budget runs out). Three kinds of write-back, don't cross the graphs:
@@ -486,9 +511,9 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	// decides the wrap-up prompt (see taskclock.go).
 	tc := taskClockFrom(ctx)
 	maxDur, clamped := clampMaxDuration(tc.DeadlineUnix, w.runTimeout)
-	settle := wrapupSettlement("worker", []string{"Bash"})
+	settle := wrapupSettlement("worker", workerConcludeHiddenTools)
 	if tc.DeadlineUnix > 0 {
-		settle = wrapupSettlementForTask("worker", []string{"Bash"}, clamped)
+		settle = wrapupSettlementForTask("worker", workerConcludeHiddenTools, clamped)
 	}
 	opts := agentcore.Options{
 		Provider:        w.prov,

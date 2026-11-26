@@ -149,7 +149,34 @@ func (s *Server) buildPlannerRuntimeContext(taskID int64, taskDir string) string
 		}
 	}
 
-	// 7. Concurrent Resource & Session Leases
+	// 7. Focused Persistent Solver ("唯一求解") & 5-Tier Technique Escalation Ladder
+	var solverDone, solverFindings int
+	if t.Store != nil {
+		if d, err := t.Store.CountFinishedIntents(); err == nil {
+			solverDone = d
+		}
+		if fs, err := t.Store.ListByKind("finding", 10); err == nil {
+			solverFindings = len(fs)
+		}
+	}
+	solverSt := globalSolverMgr.EvaluateProgressAndAutoEscalate(taskID, solverDone, solverFindings)
+	fmt.Fprintf(&b, "- Focused Persistent Solver ('唯一求解'): stage=%s (%d/5), pruned_mechanisms=%d\n",
+		solverSt.CurrentTierLabel, solverSt.CurrentTier, len(solverSt.PrunedMechanisms))
+	fmt.Fprintf(&b, "  -> Active Tier Directive: %s\n", solverSt.TierDirective)
+	if len(solverSt.PrunedMechanisms) > 0 {
+		var prunedSummary []string
+		start := 0
+		if len(solverSt.PrunedMechanisms) > 6 {
+			start = len(solverSt.PrunedMechanisms) - 6
+		}
+		for _, pm := range solverSt.PrunedMechanisms[start:] {
+			prunedSummary = append(prunedSummary, fmt.Sprintf("%s@%s(%s)", pm.Mechanism, pm.Target, pm.Reason))
+		}
+		fmt.Fprintf(&b, "  -> Pruned mechanisms (DO NOT repeat; choose orthogonal techniques): %s\n", strings.Join(prunedSummary, "; "))
+	}
+	b.WriteString("  -> Anti-premature-stop rule: keep 100% focus on solving the primary goal; when the current tier is blocked, escalate via solver_escalate (up to L4 custom script/PoC self-synthesis and L5 adjacent-pivot solving) instead of concluding early.\n")
+
+	// 8. Concurrent Resource & Session Leases
 	if leases := globalLeaseMgr.List(t.ID); len(leases) > 0 {
 		var leaseDescs []string
 		for _, l := range leases {
@@ -159,7 +186,7 @@ func (s *Server) buildPlannerRuntimeContext(taskID int64, taskDir string) string
 			strings.Join(leaseDescs, ", "))
 	}
 
-	// 8. Available PoC & wordlist inventory
+	// 9. Available PoC & wordlist inventory
 	filePocs := len(loadPocsFromDir(pocsDir()))
 	wlCount := 0
 	if s.m.pg != nil {
@@ -167,7 +194,7 @@ func (s *Server) buildPlannerRuntimeContext(taskID int64, taskDir string) string
 			wlCount = len(wls)
 		}
 	}
-	fmt.Fprintf(&b, "- Enterprise tooling inventory: %d file-based PoCs in %s (use run_infra_baseline / search_pocs / run_poc), %d encrypted wordlists (use list_wordlists / run_credential_audit / run_password_spray), internal OOB callback (oob_create_token / oob_poll_hits), business-logic & traffic probes (authz_replay / race_probe / extract_web_contracts / traffic_fuzz_audit), OSS source auditing (oss_fetch_source / code_scan_semgrep), shared uncertainty blackboard & belief revision (bb_record / bb_search / bb_corroborate / invalidate_fact_cascade), concurrent session lease coordinator (resource_lease_acquire / resource_lease_release).\n",
+	fmt.Fprintf(&b, "- Enterprise tooling inventory: %d file-based PoCs in %s (use bootstrap_target_surface / run_infra_baseline / search_pocs / run_poc), %d encrypted wordlists (use list_wordlists / run_credential_audit / run_password_spray), internal OOB callback (oob_create_token / oob_poll_hits), business-logic & traffic probes (authz_replay / race_probe / extract_web_contracts / traffic_fuzz_audit), OSS source auditing (oss_fetch_source / code_scan_semgrep), shared uncertainty blackboard & belief revision (bb_record / bb_search / bb_corroborate / invalidate_fact_cascade), focused persistent solver & commit gate (solver_status / solver_prune_mechanism / solver_escalate / verify_candidate_finding), concurrent session lease coordinator (resource_lease_acquire / resource_lease_release).\n",
 		filePocs, pocsDir(), wlCount)
 
 	return b.String()

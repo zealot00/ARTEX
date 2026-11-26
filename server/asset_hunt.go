@@ -419,6 +419,11 @@ func (s *Server) huntTools() []actool.CoreTool {
 		s.toolInvalidateFactCascade(),
 		s.toolResourceLeaseAcquire(),
 		s.toolResourceLeaseRelease(),
+		s.toolSolverStatus(),
+		s.toolSolverPruneMechanism(),
+		s.toolSolverEscalate(),
+		s.toolVerifyCandidateFinding(),
+		s.toolBootstrapTargetSurface(),
 	}
 }
 
