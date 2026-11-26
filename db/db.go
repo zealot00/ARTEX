@@ -5,8 +5,10 @@ package db
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	_ "embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -42,9 +44,53 @@ type schemaExecer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
+type schemaMigrator interface {
+	schemaExecer
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+const schemaMigrationVersion = "schema.sql"
+
+func schemaChecksum() string {
+	sum := sha256.Sum256([]byte(schemaSQL))
+	return hex.EncodeToString(sum[:])
+}
+
 func isPostgresDeadlock(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "40P01"
+}
+
+func isPostgresUndefinedTable(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "42P01"
+}
+
+// applySchemaIfNeeded checks schema_migrations first so rolling restarts with an
+// unchanged schema.sql are instant and take zero table DDL locks. When schema.sql
+// has changed (or on a fresh DB), it applies the lock-minimal idempotent schema
+// and records the new SHA-256 checksum.
+func applySchemaIfNeeded(ctx context.Context, db schemaMigrator, sleep func(time.Duration)) (applied bool, err error) {
+	want := schemaChecksum()
+	var current string
+	qErr := db.QueryRowContext(ctx, `SELECT checksum FROM schema_migrations WHERE version=$1`, schemaMigrationVersion).Scan(&current)
+	if qErr == nil && current == want {
+		return false, nil
+	}
+	if qErr != nil && !errors.Is(qErr, sql.ErrNoRows) && !isPostgresUndefinedTable(qErr) {
+		// Fall through to full schema apply on unexpected metadata error.
+	}
+	if err := applySchemaWithRetry(ctx, db, sleep); err != nil {
+		return false, err
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO schema_migrations(version, checksum, applied_at)
+VALUES ($1, $2, now())
+ON CONFLICT (version) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now()`,
+		schemaMigrationVersion, want); err != nil {
+		return true, fmt.Errorf("record schema migration checksum: %w", err)
+	}
+	return true, nil
 }
 
 func applySchemaWithRetry(ctx context.Context, execer schemaExecer, sleep func(time.Duration)) error {
@@ -184,7 +230,7 @@ func Open(dsn string) (*DB, error) {
 	// Keep the dedicated lock connection checked out until both DDL and seeding
 	// finish so concurrent application instances cannot initialize out of order.
 	err = withSchemaMigrationLock(context.Background(), sqlDB, func(conn *sql.Conn) error {
-		if err := applySchemaWithRetry(context.Background(), conn, time.Sleep); err != nil {
+		if _, err := applySchemaIfNeeded(context.Background(), conn, time.Sleep); err != nil {
 			return fmt.Errorf("apply schema: %w", err)
 		}
 		if err := d.seedBuiltins(); err != nil {

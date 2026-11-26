@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/textclean"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -237,7 +238,8 @@ func (s *Server) toolExtractWebContracts() actool.CoreTool {
 				body, _ := io.ReadAll(io.LimitReader(resp.Body, maxContractBytes))
 				resp.Body.Close()
 				if resp.StatusCode == 200 && len(body) > 0 {
-					for _, ep := range ParseJSBundleEndpoints(p.BaseURL, "js_bundle", string(body)) {
+					decodedBody := textclean.CleanBytes(body, resp.Header.Get("Content-Type"), resp.Header.Get("Content-Encoding"))
+					for _, ep := range ParseJSBundleEndpoints(p.BaseURL, "js_bundle", decodedBody) {
 						addEndpoint(ep)
 					}
 				}

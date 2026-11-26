@@ -31,6 +31,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/textclean"
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 	mproxy "github.com/lqqyt2423/go-mitmproxy/proxy"
@@ -1165,15 +1166,43 @@ FROM exchange_bodies b JOIN exchanges e ON e.id=b.id WHERE b.id=?`, id).
 // assembleRaw rebuilds one side's raw HTTP text: head, blank line, body. A body
 // that spilled to the blob store shows its inline preview followed by the blob
 // pointer, so the reader can see what it is and fetch the rest by hash.
+// Non-UTF-8 charsets (GBK/GB18030/Big5/etc.), compressed bodies, and binary payloads
+// are automatically decoded/sanitized so UI views and LLM tools never receive mojibake.
 func assembleRaw(head string, body []byte, blob sql.NullString, total int) string {
 	var b strings.Builder
-	b.WriteString(head)
+	b.WriteString(textclean.CleanText(head))
 	b.WriteByte('\n')
-	b.Write(body)
+	if len(body) > 0 {
+		if bytes.HasPrefix(body, []byte("[binary ")) {
+			b.Write(body)
+		} else {
+			ct, ce := extractRawHTTPHeaders(head)
+			b.WriteString(textclean.CleanBytes(body, ct, ce))
+		}
+	}
 	if blob.Valid && blob.String != "" {
 		fmt.Fprintf(&b, "\n…[truncated] @blob sha256:%s (len=%d)", blob.String, total)
 	}
 	return b.String()
+}
+
+func extractRawHTTPHeaders(head string) (contentType, contentEncoding string) {
+	for _, line := range strings.Split(head, "\n") {
+		line = strings.TrimSpace(line)
+		idx := strings.IndexByte(line, ':')
+		if idx <= 0 {
+			continue
+		}
+		k := strings.ToLower(strings.TrimSpace(line[:idx]))
+		v := strings.TrimSpace(line[idx+1:])
+		switch k {
+		case "content-type":
+			contentType = v
+		case "content-encoding":
+			contentEncoding = v
+		}
+	}
+	return contentType, contentEncoding
 }
 
 // HostCount is one distinct recorded host plus its exchange count.

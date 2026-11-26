@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Autumn-27/artex/textclean"
 	"github.com/creack/pty"
 	"golang.org/x/crypto/ssh"
 )
@@ -470,7 +471,7 @@ func (m *Manager) Exec(ctx context.Context, taskID, sessionID, command string, t
 			_ = sess.Close()
 			return &ExecResult{
 				SessionID: sessionID,
-				Output:    outBuf.String(),
+				Output:    textclean.CleanText(outBuf.String()),
 				ExitCode:  -1,
 				TimedOut:  true,
 			}, nil
@@ -484,10 +485,11 @@ func (m *Manager) Exec(ctx context.Context, taskID, sessionID, command string, t
 					exitCode = -1
 				}
 			}
-			_, _ = s.output.Write([]byte(fmt.Sprintf("$ %s\n%s\n", command, outBuf.String())))
+			cleanOut := textclean.CleanText(outBuf.String())
+			_, _ = s.output.Write([]byte(fmt.Sprintf("$ %s\n%s\n", command, cleanOut)))
 			return &ExecResult{
 				SessionID: sessionID,
-				Output:    outBuf.String(),
+				Output:    cleanOut,
 				ExitCode:  exitCode,
 			}, nil
 		}
@@ -514,7 +516,7 @@ func (m *Manager) Exec(ctx context.Context, taskID, sessionID, command string, t
 				if nl := strings.IndexAny(rest, "\r\n"); nl >= 0 {
 					codeStr := strings.TrimSpace(rest[:nl])
 					exitCode, _ := strconv.Atoi(codeStr)
-					cleanOut := strings.TrimSpace(chunk[:idx])
+					cleanOut := strings.TrimSpace(textclean.CleanText(chunk[:idx]))
 					return &ExecResult{
 						SessionID: sessionID,
 						Output:    cleanOut,

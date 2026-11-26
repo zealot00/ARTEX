@@ -8,6 +8,53 @@ CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
 BEGIN NEW.updated_at = now(); RETURN NEW; END;
 $$ LANGUAGE plpgsql;
 
+-- Lock-minimal idempotent trigger helper for zero-downtime rolling updates:
+-- only executes CREATE TRIGGER (which takes ACCESS EXCLUSIVE) when the trigger is absent.
+CREATE OR REPLACE FUNCTION ensure_trigger(p_table regclass, p_name text, p_ddl text) RETURNS void AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger
+        WHERE tgrelid = p_table AND tgname = p_name AND NOT tgisinternal
+    ) THEN
+        EXECUTE p_ddl;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Lock-minimal idempotent CHECK constraint helper for rolling updates:
+-- avoids unconditional DROP/ADD CONSTRAINT (which acquires ACCESS EXCLUSIVE and full-scans the table).
+-- Recreates the constraint only when it is missing or lacks p_required_token in its definition.
+CREATE OR REPLACE FUNCTION ensure_check_constraint(
+    p_table regclass,
+    p_name text,
+    p_check_expr text,
+    p_required_token text DEFAULT ''
+) RETURNS void AS $$
+DECLARE
+    existing_def text;
+BEGIN
+    SELECT pg_get_constraintdef(oid) INTO existing_def
+    FROM pg_constraint
+    WHERE conrelid = p_table AND conname = p_name;
+
+    IF existing_def IS NOT NULL AND (p_required_token = '' OR position(p_required_token IN existing_def) > 0) THEN
+        RETURN;
+    END IF;
+
+    IF existing_def IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', p_table, p_name);
+    END IF;
+    EXECUTE format('ALTER TABLE %s ADD CONSTRAINT %I CHECK (%s)', p_table, p_name, p_check_expr);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Schema migration audit & checksum table (enables instant no-op startup when schema.sql is unchanged).
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version    TEXT PRIMARY KEY,
+    checksum   TEXT NOT NULL,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Safe text→inet conversion: invalid values return NULL instead of raising 22P02.
 -- assets.ip is free text (the agent / asset API may write a hostname into it), so a
 -- bare a.ip::inet cast would let one dirty row break the whole company-attribution
@@ -34,9 +81,7 @@ CREATE TABLE IF NOT EXISTS companies (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_companies_nkey ON companies(nkey);
-DROP TRIGGER IF EXISTS trg_companies_upd ON companies;
-CREATE TRIGGER trg_companies_upd BEFORE UPDATE ON companies
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('companies'::regclass, 'trg_companies_upd', $$CREATE TRIGGER trg_companies_upd BEFORE UPDATE ON companies FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 CREATE TABLE IF NOT EXISTS assets (
     id              BIGSERIAL PRIMARY KEY,
@@ -103,15 +148,25 @@ CREATE INDEX IF NOT EXISTS idx_av2_open_ports   ON assets USING GIN(open_ports) 
 CREATE INDEX IF NOT EXISTS idx_av2_last_seen    ON assets(last_seen DESC);
 CREATE INDEX IF NOT EXISTS idx_av2_type_seen    ON assets(type, last_seen DESC);
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS company_source TEXT;
-UPDATE assets SET company_source = 'explicit' WHERE company_source IS NULL;
-ALTER TABLE assets ALTER COLUMN company_source SET DEFAULT 'explicit';
-ALTER TABLE assets ALTER COLUMN company_source SET NOT NULL;
-ALTER TABLE assets DROP CONSTRAINT IF EXISTS assets_company_source_check;
-ALTER TABLE assets ADD CONSTRAINT assets_company_source_check
-    CHECK (company_source IN ('explicit','scope'));
-DROP TRIGGER IF EXISTS trg_av2_upd ON assets;
-CREATE TRIGGER trg_av2_upd BEFORE UPDATE ON assets
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'assets'
+          AND column_name = 'company_source' AND is_nullable = 'YES'
+    ) THEN
+        UPDATE assets SET company_source = 'explicit' WHERE company_source IS NULL;
+        ALTER TABLE assets ALTER COLUMN company_source SET DEFAULT 'explicit';
+        ALTER TABLE assets ALTER COLUMN company_source SET NOT NULL;
+    END IF;
+END $$;
+SELECT ensure_check_constraint(
+    'assets'::regclass,
+    'assets_company_source_check',
+    $$company_source IN ('explicit','scope')$$,
+    'scope'
+);
+SELECT ensure_trigger('assets'::regclass, 'trg_av2_upd', $$CREATE TRIGGER trg_av2_upd BEFORE UPDATE ON assets FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 CREATE TABLE IF NOT EXISTS company_scope (
     id         BIGSERIAL PRIMARY KEY,
@@ -133,14 +188,19 @@ CREATE TABLE IF NOT EXISTS company_scope (
 );
 -- Existing installations need the new text payload and expanded kind check.
 ALTER TABLE company_scope ADD COLUMN IF NOT EXISTS value TEXT;
-ALTER TABLE company_scope DROP CONSTRAINT IF EXISTS company_scope_kind_check;
-ALTER TABLE company_scope ADD CONSTRAINT company_scope_kind_check
-    CHECK (kind IN ('domain','ip','cidr','icp','keyword'));
-ALTER TABLE company_scope DROP CONSTRAINT IF EXISTS ck_company_scope_payload;
-ALTER TABLE company_scope ADD CONSTRAINT ck_company_scope_payload CHECK (
-    (kind = 'domain' AND domain IS NOT NULL AND net IS NULL AND value IS NULL)
-    OR (kind IN ('ip','cidr') AND domain IS NULL AND net IS NOT NULL AND value IS NULL)
-    OR (kind IN ('icp','keyword') AND domain IS NULL AND net IS NULL AND value IS NOT NULL)
+SELECT ensure_check_constraint(
+    'company_scope'::regclass,
+    'company_scope_kind_check',
+    $$kind IN ('domain','ip','cidr','icp','keyword')$$,
+    'keyword'
+);
+SELECT ensure_check_constraint(
+    'company_scope'::regclass,
+    'ck_company_scope_payload',
+    $$(kind = 'domain' AND domain IS NOT NULL AND net IS NULL AND value IS NULL)
+      OR (kind IN ('ip','cidr') AND domain IS NULL AND net IS NOT NULL AND value IS NULL)
+      OR (kind IN ('icp','keyword') AND domain IS NULL AND net IS NULL AND value IS NOT NULL)$$,
+    'keyword'
 );
 CREATE INDEX IF NOT EXISTS idx_sv2_domain  ON company_scope(domain)   WHERE kind = 'domain';
 CREATE INDEX IF NOT EXISTS idx_sv2_net     ON company_scope USING GIST(net inet_ops) WHERE kind IN ('ip','cidr');
@@ -164,9 +224,7 @@ CREATE TABLE IF NOT EXISTS explorations (
 -- planner wakes and processes a round. Drives the ≥R cold-node debounce (measured in
 -- this exploration's own rounds, not global node ids or wall-clock).
 ALTER TABLE explorations ADD COLUMN IF NOT EXISTS round_no BIGINT NOT NULL DEFAULT 0;
-DROP TRIGGER IF EXISTS trg_exp_upd ON explorations;
-CREATE TRIGGER trg_exp_upd BEFORE UPDATE ON explorations
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('explorations'::regclass, 'trg_exp_upd', $$CREATE TRIGGER trg_exp_upd BEFORE UPDATE ON explorations FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 CREATE TABLE IF NOT EXISTS exploration_nodes (
     id             BIGSERIAL PRIMARY KEY,
@@ -249,9 +307,7 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_expnodes_part     ON exploration_nodes(exploration_id, kind);
 CREATE INDEX IF NOT EXISTS idx_expnodes_frontier ON exploration_nodes(exploration_id, priority DESC)
     WHERE kind='intent' AND state='open';
-DROP TRIGGER IF EXISTS trg_expnodes_upd ON exploration_nodes;
-CREATE TRIGGER trg_expnodes_upd BEFORE UPDATE ON exploration_nodes
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('exploration_nodes'::regclass, 'trg_expnodes_upd', $$CREATE TRIGGER trg_expnodes_upd BEFORE UPDATE ON exploration_nodes FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 CREATE TABLE IF NOT EXISTS exploration_edges (
     exploration_id BIGINT NOT NULL REFERENCES explorations(id) ON DELETE CASCADE,
@@ -417,9 +473,7 @@ CREATE TABLE IF NOT EXISTS llm_profiles (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_one_default ON llm_profiles(is_default) WHERE is_default;
-DROP TRIGGER IF EXISTS trg_llm_upd ON llm_profiles;
-CREATE TRIGGER trg_llm_upd BEFORE UPDATE ON llm_profiles
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('llm_profiles'::regclass, 'trg_llm_upd', $$CREATE TRIGGER trg_llm_upd BEFORE UPDATE ON llm_profiles FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 -- Rotation order/exclusion flags; backfills old databases. Default 0 / false = every profile joins the rotation.
 ALTER TABLE llm_profiles ADD COLUMN IF NOT EXISTS priority     INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE llm_profiles ADD COLUMN IF NOT EXISTS pool_exclude BOOLEAN NOT NULL DEFAULT false;
@@ -428,21 +482,29 @@ ALTER TABLE llm_profiles ADD COLUMN IF NOT EXISTS streaming    BOOLEAN NOT NULL 
 -- Relax the format constraint to allow openai-responses (OpenAI Responses API) and
 -- ollama (local Ollama server, keyless OpenAI-compatible endpoint); backfills old databases.
 -- Runs at every startup, idempotent: drop the old CHECK first, then create the new four-value CHECK.
-ALTER TABLE llm_profiles DROP CONSTRAINT IF EXISTS llm_profiles_format_check;
-ALTER TABLE llm_profiles ADD  CONSTRAINT llm_profiles_format_check
-    CHECK (format IN ('openai','anthropic','openai-responses','ollama'));
+SELECT ensure_check_constraint(
+    'llm_profiles'::regclass,
+    'llm_profiles_format_check',
+    $$format IN ('openai','anthropic','openai-responses','ollama')$$,
+    'ollama'
+);
 
 -- Output cap and its field name; backfills old databases. Defaults 0 / '' = send no cap and keep the max_tokens field name;
 -- old configs behave exactly as before.
 ALTER TABLE llm_profiles ADD COLUMN IF NOT EXISTS max_tokens       INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE llm_profiles ADD COLUMN IF NOT EXISTS max_tokens_field TEXT    NOT NULL DEFAULT '';
--- Same as format: drop then recreate, keeping every startup idempotent.
-ALTER TABLE llm_profiles DROP CONSTRAINT IF EXISTS llm_profiles_max_tokens_field_check;
-ALTER TABLE llm_profiles ADD  CONSTRAINT llm_profiles_max_tokens_field_check
-    CHECK (max_tokens_field IN ('','max_completion_tokens'));
-ALTER TABLE llm_profiles DROP CONSTRAINT IF EXISTS llm_profiles_max_tokens_check;
-ALTER TABLE llm_profiles ADD  CONSTRAINT llm_profiles_max_tokens_check
-    CHECK (max_tokens >= 0);
+SELECT ensure_check_constraint(
+    'llm_profiles'::regclass,
+    'llm_profiles_max_tokens_field_check',
+    $$max_tokens_field IN ('','max_completion_tokens')$$,
+    'max_completion_tokens'
+);
+SELECT ensure_check_constraint(
+    'llm_profiles'::regclass,
+    'llm_profiles_max_tokens_check',
+    $$max_tokens >= 0$$,
+    'max_tokens'
+);
 -- Custom session header name; backfills old databases. Default '' = do not send; old configs behave unchanged.
 ALTER TABLE llm_profiles ADD COLUMN IF NOT EXISTS session_header_key TEXT NOT NULL DEFAULT '';
 -- Custom User-Agent; backfills old databases. Default '' = do not override (keep the default UA); old configs behave unchanged.
@@ -462,10 +524,13 @@ ALTER TABLE llm_profiles ADD COLUMN IF NOT EXISTS retry_empty_interval_ms   INTE
 ALTER TABLE llm_profiles ADD COLUMN IF NOT EXISTS retry_stream_attempts     INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE llm_profiles ADD COLUMN IF NOT EXISTS retry_stream_interval_ms  INTEGER NOT NULL DEFAULT 0;
 -- Same as format: drop then recreate, keeping every startup idempotent. Attempts floor is -1 (disabled); intervals cannot be negative.
-ALTER TABLE llm_profiles DROP CONSTRAINT IF EXISTS llm_profiles_retry_check;
-ALTER TABLE llm_profiles ADD  CONSTRAINT llm_profiles_retry_check CHECK (
-    retry_connect_attempts >= -1 AND retry_empty_attempts >= -1 AND retry_stream_attempts >= -1
-    AND retry_connect_interval_ms >= 0 AND retry_empty_interval_ms >= 0 AND retry_stream_interval_ms >= 0);
+SELECT ensure_check_constraint(
+    'llm_profiles'::regclass,
+    'llm_profiles_retry_check',
+    $$retry_connect_attempts >= -1 AND retry_empty_attempts >= -1 AND retry_stream_attempts >= -1
+      AND retry_connect_interval_ms >= 0 AND retry_empty_interval_ms >= 0 AND retry_stream_interval_ms >= 0$$,
+    'retry_stream_interval_ms'
+);
 
 -- The thinking toggle field thinking_type was split out of the old single reasoning_effort semantic in one pass.
 -- schema.sql runs at every startup, so the migration must run only once: backfill only when the column does not
@@ -513,9 +578,7 @@ CREATE TABLE IF NOT EXISTS task_categories (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_task_categories_name ON task_categories(name, id);
-DROP TRIGGER IF EXISTS trg_task_categories_upd ON task_categories;
-CREATE TRIGGER trg_task_categories_upd BEFORE UPDATE ON task_categories
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('task_categories'::regclass, 'trg_task_categories_upd', $$CREATE TRIGGER trg_task_categories_upd BEFORE UPDATE ON task_categories FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 CREATE TABLE IF NOT EXISTS tasks (
     id             BIGSERIAL PRIMARY KEY,
@@ -552,9 +615,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_alive  ON tasks(created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)          WHERE deleted_at IS NULL;
-DROP TRIGGER IF EXISTS trg_tasks_upd ON tasks;
-CREATE TRIGGER trg_tasks_upd BEFORE UPDATE ON tasks
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('tasks'::regclass, 'trg_tasks_upd', $$CREATE TRIGGER trg_tasks_upd BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 -- planner heartbeat trigger interval (seconds); backfills old databases. Default 300s (5min). See docs/planner-trigger-impl-plan.md
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS plan_heartbeat_seconds INTEGER NOT NULL DEFAULT 300;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS plan_quiet_mode BOOLEAN NOT NULL DEFAULT true;
@@ -644,9 +705,7 @@ ALTER TABLE task_archives ALTER COLUMN format_version SET DEFAULT 2;
 CREATE INDEX IF NOT EXISTS idx_task_archives_state ON task_archives(state, requested_at, id);
 CREATE INDEX IF NOT EXISTS idx_task_archives_archived ON task_archives(archived_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_task_archives_sources ON task_archives USING GIN(source_task_ids);
-DROP TRIGGER IF EXISTS trg_task_archives_upd ON task_archives;
-CREATE TRIGGER trg_task_archives_upd BEFORE UPDATE ON task_archives
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('task_archives'::regclass, 'trg_task_archives_upd', $$CREATE TRIGGER trg_task_archives_upd BEFORE UPDATE ON task_archives FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 -- Reusable task description/goal presets. nkey is the normalized, case-insensitive
 -- identity used to reject visually equivalent duplicate names.
@@ -667,9 +726,7 @@ CREATE TABLE IF NOT EXISTS task_templates (
 ALTER TABLE task_templates ADD COLUMN IF NOT EXISTS category_id BIGINT REFERENCES task_categories(id) ON DELETE SET NULL;
 ALTER TABLE task_templates ADD COLUMN IF NOT EXISTS intercept_rules JSONB NOT NULL DEFAULT '[]';
 CREATE INDEX IF NOT EXISTS idx_task_templates_updated ON task_templates(updated_at DESC, id DESC);
-DROP TRIGGER IF EXISTS trg_task_templates_upd ON task_templates;
-CREATE TRIGGER trg_task_templates_upd BEFORE UPDATE ON task_templates
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('task_templates'::regclass, 'trg_task_templates_upd', $$CREATE TRIGGER trg_task_templates_upd BEFORE UPDATE ON task_templates FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 -- Direct, read-only task context inheritance. Relations are intentionally not
 -- recursive: a task sees only the source tasks explicitly chosen at creation.
@@ -698,9 +755,7 @@ CREATE TABLE IF NOT EXISTS task_asset_links (
 CREATE INDEX IF NOT EXISTS idx_task_asset_links_asset ON task_asset_links(asset_id, task_id);
 CREATE INDEX IF NOT EXISTS idx_task_asset_links_node ON task_asset_links(source_node_id)
     WHERE source_node_id IS NOT NULL;
-DROP TRIGGER IF EXISTS trg_task_asset_links_upd ON task_asset_links;
-CREATE TRIGGER trg_task_asset_links_upd BEFORE UPDATE ON task_asset_links
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('task_asset_links'::regclass, 'trg_task_asset_links_upd', $$CREATE TRIGGER trg_task_asset_links_upd BEFORE UPDATE ON task_asset_links FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 -- Keep provenance rows synchronized when existing asset upsert paths append or
 -- remove task ids. Detailed callers overwrite the generic source after upsert.
@@ -718,9 +773,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-DROP TRIGGER IF EXISTS trg_assets_task_links ON assets;
-CREATE TRIGGER trg_assets_task_links AFTER INSERT OR UPDATE OF task_ids ON assets
-    FOR EACH ROW EXECUTE FUNCTION sync_task_asset_links();
+SELECT ensure_trigger('assets'::regclass, 'trg_assets_task_links', $$CREATE TRIGGER trg_assets_task_links AFTER INSERT OR UPDATE OF task_ids ON assets FOR EACH ROW EXECUTE FUNCTION sync_task_asset_links()$$);
 
 -- Existing installations receive an auditable legacy source without rewriting
 -- task_ids. Ignore stale array ids that no longer resolve to a live task.
@@ -750,9 +803,7 @@ CREATE INDEX IF NOT EXISTS idx_task_llm_profiles_order ON task_llm_profiles(task
 CREATE INDEX IF NOT EXISTS idx_task_llm_profiles_profile ON task_llm_profiles(profile_id, task_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_llm_profile ON tasks(llm_profile_id) WHERE llm_profile_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_tasks_active_llm_profile ON tasks(active_llm_profile_id) WHERE active_llm_profile_id IS NOT NULL;
-DROP TRIGGER IF EXISTS trg_task_llm_profiles_upd ON task_llm_profiles;
-CREATE TRIGGER trg_task_llm_profiles_upd BEFORE UPDATE ON task_llm_profiles
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('task_llm_profiles'::regclass, 'trg_task_llm_profiles_upd', $$CREATE TRIGGER trg_task_llm_profiles_upd BEFORE UPDATE ON task_llm_profiles FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 -- One-time-compatible backfill: old pinned tasks become one-entry chains. A user
 -- can still clear the chain later because the update path also clears the legacy
@@ -790,11 +841,19 @@ CREATE TABLE IF NOT EXISTS task_scope (
 );
 -- Old database upgrade: expand task scope to match the company scope's single-textbox recognition capability.
 ALTER TABLE task_scope ADD COLUMN IF NOT EXISTS value TEXT;
-ALTER TABLE task_scope DROP CONSTRAINT IF EXISTS task_scope_kind_check;
-ALTER TABLE task_scope ADD CONSTRAINT task_scope_kind_check
-    CHECK (kind IN ('company','root_domain','subdomain','ip','cidr','icp','keyword'));
+SELECT ensure_check_constraint(
+    'task_scope'::regclass,
+    'task_scope_kind_check',
+    $$kind IN ('company','root_domain','subdomain','ip','cidr','icp','keyword')$$,
+    'keyword'
+);
 -- Dedup: the same scope entry is stored only once per task (auto-fill bulk inserts rely on it for idempotence).
-DROP INDEX IF EXISTS uq_task_scope;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'uq_task_scope' AND relkind = 'i') THEN
+        DROP INDEX uq_task_scope;
+    END IF;
+END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_task_scope_v2 ON task_scope(
     task_id, kind, COALESCE(domain,''), COALESCE(net::text,''), COALESCE(company_id,0), COALESCE(value,''));
 CREATE INDEX IF NOT EXISTS idx_ts_domain  ON task_scope(domain) WHERE kind IN ('root_domain','subdomain');
@@ -840,9 +899,7 @@ ALTER TABLE agents ADD COLUMN IF NOT EXISTS llm_profile_id BIGINT REFERENCES llm
 -- run_seconds per-run wall-clock default 600→1200: only the column default changes (affects future inserts); existing rows untouched.
 ALTER TABLE agents ALTER COLUMN run_seconds SET DEFAULT 1200;
 CREATE INDEX IF NOT EXISTS idx_agents_llm_profile ON agents(llm_profile_id) WHERE llm_profile_id IS NOT NULL;
-DROP TRIGGER IF EXISTS trg_agents_upd ON agents;
-CREATE TRIGGER trg_agents_upd BEFORE UPDATE ON agents
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('agents'::regclass, 'trg_agents_upd', $$CREATE TRIGGER trg_agents_upd BEFORE UPDATE ON agents FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 CREATE TABLE IF NOT EXISTS agent_prompts (
     id            BIGSERIAL PRIMARY KEY,
@@ -888,9 +945,12 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
 );
 
 -- Allow legacy MCP SSE servers on databases created before SSE support.
-ALTER TABLE mcp_servers DROP CONSTRAINT IF EXISTS mcp_servers_transport_check;
-ALTER TABLE mcp_servers ADD CONSTRAINT mcp_servers_transport_check
-    CHECK (transport IN ('stdio','http','sse'));
+SELECT ensure_check_constraint(
+    'mcp_servers'::regclass,
+    'mcp_servers_transport_check',
+    $$transport IN ('stdio','http','sse')$$,
+    'sse'
+);
 -- Backfill column for old databases (schema.sql runs Exec at every startup).
 ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS insecure BOOLEAN NOT NULL DEFAULT false;
 -- Per-server request timeout for remote MCP transports, in seconds (default 120). Analysis
@@ -902,9 +962,7 @@ ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS timeout_seconds INT NOT NULL DE
 ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS last_connect_at TIMESTAMPTZ;
 ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS last_connect_ok BOOLEAN;
 ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS last_connect_err TEXT;
-DROP TRIGGER IF EXISTS trg_mcp_upd ON mcp_servers;
-CREATE TRIGGER trg_mcp_upd BEFORE UPDATE ON mcp_servers
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('mcp_servers'::regclass, 'trg_mcp_upd', $$CREATE TRIGGER trg_mcp_upd BEFORE UPDATE ON mcp_servers FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 -- Default data-source placeholder: the ScopeSentry asset sync MCP (address and auth left empty, disabled).
 -- Lets the "Asset Sync" page detect whether a data source is configured; the user fills in url and X-API-Key on the page before enabling it.
@@ -996,9 +1054,7 @@ CREATE TABLE IF NOT EXISTS tools (
     deferred    BOOLEAN NOT NULL DEFAULT false,
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-DROP TRIGGER IF EXISTS trg_tools_upd ON tools;
-CREATE TRIGGER trg_tools_upd BEFORE UPDATE ON tools
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('tools'::regclass, 'trg_tools_upd', $$CREATE TRIGGER trg_tools_upd BEFORE UPDATE ON tools FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 -- =====================================================================
 -- I. Sessions (chat page)
@@ -1017,9 +1073,7 @@ ALTER TABLE conversations ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS target_gate BOOLEAN NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS idx_conversations_llm_profile ON conversations(llm_profile_id) WHERE llm_profile_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_conversations_pinned ON conversations(pinned_at DESC) WHERE pinned_at IS NOT NULL;
-DROP TRIGGER IF EXISTS trg_conversations_upd ON conversations;
-CREATE TRIGGER trg_conversations_upd BEFORE UPDATE ON conversations
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('conversations'::regclass, 'trg_conversations_upd', $$CREATE TRIGGER trg_conversations_upd BEFORE UPDATE ON conversations FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 CREATE TABLE IF NOT EXISTS conversation_activities (
     id                 BIGSERIAL PRIMARY KEY,
@@ -1073,9 +1127,7 @@ ALTER TABLE agent_triggers ADD COLUMN IF NOT EXISTS tool_call_message   TEXT    
 ALTER TABLE agent_triggers ADD COLUMN IF NOT EXISTS tool_names          TEXT    NOT NULL DEFAULT '';
 ALTER TABLE agent_triggers ADD COLUMN IF NOT EXISTS on_task_create      BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE agent_triggers ADD COLUMN IF NOT EXISTS task_create_message TEXT    NOT NULL DEFAULT '';
-DROP TRIGGER IF EXISTS trg_agent_triggers_upd ON agent_triggers;
-CREATE TRIGGER trg_agent_triggers_upd BEFORE UPDATE ON agent_triggers
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('agent_triggers'::regclass, 'trg_agent_triggers_upd', $$CREATE TRIGGER trg_agent_triggers_upd BEFORE UPDATE ON agent_triggers FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 CREATE TABLE IF NOT EXISTS scheduler_state (
     key   TEXT PRIMARY KEY,
@@ -1101,9 +1153,7 @@ CREATE TABLE IF NOT EXISTS intercept_rules (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-DROP TRIGGER IF EXISTS trg_intercept_rules_upd ON intercept_rules;
-CREATE TRIGGER trg_intercept_rules_upd BEFORE UPDATE ON intercept_rules
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('intercept_rules'::regclass, 'trg_intercept_rules_upd', $$CREATE TRIGGER trg_intercept_rules_upd BEFORE UPDATE ON intercept_rules FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 CREATE TABLE IF NOT EXISTS intercept_pending (
     id              BIGSERIAL PRIMARY KEY,
@@ -1251,9 +1301,7 @@ BEGIN
     RETURN OLD;
 END;
 $$;
-DROP TRIGGER IF EXISTS trg_conversation_retest_delete ON conversations;
-CREATE TRIGGER trg_conversation_retest_delete BEFORE DELETE ON conversations
-    FOR EACH ROW EXECUTE FUNCTION stop_deleted_conversation_retest();
+SELECT ensure_trigger('conversations'::regclass, 'trg_conversation_retest_delete', $$CREATE TRIGGER trg_conversation_retest_delete BEFORE DELETE ON conversations FOR EACH ROW EXECUTE FUNCTION stop_deleted_conversation_retest()$$);
 
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS evidence_version BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS report_evidence_version BIGINT NOT NULL DEFAULT 0;
@@ -1377,9 +1425,7 @@ CREATE TABLE IF NOT EXISTS asset_intercept_rules (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_asset_intercept_enabled ON asset_intercept_rules(enabled);
-DROP TRIGGER IF EXISTS trg_asset_intercept_rules_upd ON asset_intercept_rules;
-CREATE TRIGGER trg_asset_intercept_rules_upd BEFORE UPDATE ON asset_intercept_rules
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('asset_intercept_rules'::regclass, 'trg_asset_intercept_rules_upd', $$CREATE TRIGGER trg_asset_intercept_rules_upd BEFORE UPDATE ON asset_intercept_rules FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 -- =====================================================================
 -- Task-level asset intercept/allow rules
@@ -1424,9 +1470,7 @@ CREATE TABLE IF NOT EXISTS task_credentials (
 );
 
 ALTER TABLE task_intercept_rules ADD COLUMN IF NOT EXISTS action TEXT NOT NULL DEFAULT 'block';
-DROP TRIGGER IF EXISTS trg_task_intercept_rules_upd ON task_intercept_rules;
-CREATE TRIGGER trg_task_intercept_rules_upd BEFORE UPDATE ON task_intercept_rules
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('task_intercept_rules'::regclass, 'trg_task_intercept_rules_upd', $$CREATE TRIGGER trg_task_intercept_rules_upd BEFORE UPDATE ON task_intercept_rules FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 -- =====================================================================
 -- M. Finding IM delivery
@@ -1474,9 +1518,7 @@ CREATE TABLE IF NOT EXISTS notification_channels (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-DROP TRIGGER IF EXISTS trg_notification_channels_upd ON notification_channels;
-CREATE TRIGGER trg_notification_channels_upd BEFORE UPDATE ON notification_channels
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('notification_channels'::regclass, 'trg_notification_channels_upd', $$CREATE TRIGGER trg_notification_channels_upd BEFORE UPDATE ON notification_channels FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 -- Event facts. Written in the **same transaction** by RecordFindingTx / status-change transactions, keeping "finding
 -- persisted" and "delivery job exists" atomically consistent — there is no window where the commit succeeds but the
@@ -1621,9 +1663,7 @@ CREATE TABLE IF NOT EXISTS task_checks (
     UNIQUE (task_id, check_code, target)
 );
 CREATE INDEX IF NOT EXISTS idx_task_checks_task ON task_checks(task_id, id);
-DROP TRIGGER IF EXISTS trg_task_checks_upd ON task_checks;
-CREATE TRIGGER trg_task_checks_upd BEFORE UPDATE ON task_checks
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('task_checks'::regclass, 'trg_task_checks_upd', $$CREATE TRIGGER trg_task_checks_upd BEFORE UPDATE ON task_checks FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 -- =====================================================================
 -- Encrypted, model-opaque wordlist metadata (plaintext stored only in Vault)
@@ -1640,9 +1680,7 @@ CREATE TABLE IF NOT EXISTS wordlists (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_wordlists_kind ON wordlists(kind, name);
-DROP TRIGGER IF EXISTS trg_wordlists_upd ON wordlists;
-CREATE TRIGGER trg_wordlists_upd BEFORE UPDATE ON wordlists
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('wordlists'::regclass, 'trg_wordlists_upd', $$CREATE TRIGGER trg_wordlists_upd BEFORE UPDATE ON wordlists FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 -- =====================================================================
 -- Enterprise private PoC template / verification script repository
@@ -1662,9 +1700,7 @@ CREATE TABLE IF NOT EXISTS pocs (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_pocs_kind ON pocs(kind, name);
-DROP TRIGGER IF EXISTS trg_pocs_upd ON pocs;
-CREATE TRIGGER trg_pocs_upd BEFORE UPDATE ON pocs
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('pocs'::regclass, 'trg_pocs_upd', $$CREATE TRIGGER trg_pocs_upd BEFORE UPDATE ON pocs FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 -- =====================================================================
 -- Task-scoped outbound / external connection audit ledger
@@ -1708,9 +1744,7 @@ CREATE TABLE IF NOT EXISTS blackboard_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_blackboard_task_state
     ON blackboard_entries(task_id, epistemic_state, kind, updated_at DESC);
-DROP TRIGGER IF EXISTS trg_blackboard_entries_upd ON blackboard_entries;
-CREATE TRIGGER trg_blackboard_entries_upd BEFORE UPDATE ON blackboard_entries
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('blackboard_entries'::regclass, 'trg_blackboard_entries_upd', $$CREATE TRIGGER trg_blackboard_entries_upd BEFORE UPDATE ON blackboard_entries FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);
 
 -- =====================================================================
 -- Focused Persistent Solver state (L1-L5 escalation + pruned mechanisms)
@@ -1723,6 +1757,4 @@ CREATE TABLE IF NOT EXISTS task_solver_states (
     escalation_log    JSONB NOT NULL DEFAULT '[]'::jsonb,
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-DROP TRIGGER IF EXISTS trg_task_solver_states_upd ON task_solver_states;
-CREATE TRIGGER trg_task_solver_states_upd BEFORE UPDATE ON task_solver_states
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+SELECT ensure_trigger('task_solver_states'::regclass, 'trg_task_solver_states_upd', $$CREATE TRIGGER trg_task_solver_states_upd BEFORE UPDATE ON task_solver_states FOR EACH ROW EXECUTE FUNCTION set_updated_at()$$);

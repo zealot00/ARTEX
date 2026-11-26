@@ -9,6 +9,7 @@ import (
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/textclean"
 )
 
 type toolUsageRecorder interface {
@@ -44,5 +45,14 @@ func (m *meteredTool) Call(ctx context.Context, input json.RawMessage, tc *actoo
 	}); err != nil {
 		log.Printf("[toolusage] insert %s: %v", m.toolKey, err)
 	}
-	return m.CoreTool.Call(ctx, input, tc)
+	res, err := m.CoreTool.Call(ctx, input, tc)
+	for i := range res.Content {
+		if res.Content[i].Text != "" {
+			cleaned := textclean.CleanText(res.Content[i].Text)
+			if cleaned != res.Content[i].Text {
+				res.Content[i].Text = cleaned
+			}
+		}
+	}
+	return res, err
 }
