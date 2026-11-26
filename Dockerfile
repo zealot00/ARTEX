@@ -14,9 +14,17 @@
 # Pinned to the Node 22 line the CI/release workflows use. On the build platform
 # only; the frontend static export is architecture-independent.
 FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS web
+ARG NPM_REGISTRY=""
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN set -eux; \
+    reg="${NPM_REGISTRY}"; \
+    if [ -z "$reg" ]; then \
+      reg="$(node -e 'const urls=["https://registry.npmjs.org","https://registry.yarnpkg.com","https://registry.npmmirror.com","https://mirrors.cloud.tencent.com/npm"];Promise.any(urls.map(u=>fetch(u+"/typescript",{signal:AbortSignal.timeout(3000)}).then(r=>r.ok?u:Promise.reject()))).then(u=>process.stdout.write(u)).catch(()=>process.stdout.write("https://registry.npmjs.org"))')"; \
+    fi; \
+    echo "[npm] selected fastest registry: $reg"; \
+    npm config set registry "$reg"; \
+    npm ci --ignore-scripts
 COPY web/ ./
 RUN npm run build:static
 
@@ -25,9 +33,19 @@ RUN npm run build:static
 # binary is CGO-free, so this stage runs on the build platform and cross-compiles
 # to $TARGETARCH without QEMU.
 FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS build
+ARG GOPROXY=""
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN set -eux; \
+    gp="${GOPROXY}"; \
+    if [ -z "$gp" ]; then \
+      best="$({ for u in "https://proxy.golang.org" "https://goproxy.io" "https://goproxy.cn" "https://mirrors.aliyun.com/goproxy"; do \
+        ( t="$(curl -fsSL -o /dev/null --connect-timeout 2 --max-time 3 -w "%{time_total}" "$u" 2>/dev/null)" && echo "$t $u" ) & \
+      done; wait; } | sort -n | awk 'NR==1{print $2}')"; \
+      gp="${best:-https://proxy.golang.org},https://proxy.golang.org,direct"; \
+    fi; \
+    echo "[go] selected GOPROXY chain: $gp"; \
+    GOPROXY="$gp" go mod download
 COPY . .
 # Reuse the frontend built above; build.sh skips its own frontend step.
 COPY --from=web /src/web/out ./server/webui/dist
@@ -165,6 +183,48 @@ RUN set -eux; \
     ln -sfn /opt/nuclei-templates /root/nuclei-templates; \
     nuclei -version >/dev/null; httpx -version; subfinder -version; katana -version; \
     ffuf -V >/dev/null; dalfox --version >/dev/null; sqlmap --version >/dev/null
+
+# Auto-select the fastest global/regional PyPI mirror (Americas/Global Fastly,
+# Europe SUNET, and APAC/CN TUNA/Aliyun/Tencent/USTC) via parallel latency probe,
+# writing /etc/pip.conf with extra-index-url fallback so both bbot and pentest-tools
+# venv builds run at peak speed regardless of where the user's host is located.
+ARG PIP_INDEX_URL=""
+ARG NPM_REGISTRY=""
+RUN set -eux; \
+    primary="${PIP_INDEX_URL}"; \
+    fallback="https://pypi.org/simple"; \
+    if [ -z "$primary" ]; then \
+      ranked="$({ for u in \
+        "https://pypi.org/simple" \
+        "https://mirror.accum.se/mirror/pypi.org/simple" \
+        "https://mirrors.aliyun.com/pypi/simple" \
+        "https://mirrors.cloud.tencent.com/pypi/simple" \
+        "https://pypi.tuna.tsinghua.edu.cn/simple" \
+        "https://pypi.mirrors.ustc.edu.cn/simple"; do \
+        ( t="$(curl -fsSL -o /dev/null --connect-timeout 2 --max-time 3 -w "%{time_total}" "$u/pip/" 2>/dev/null)" && echo "$t $u" ) & \
+      done; wait; } | sort -n | awk '{print $2}')"; \
+      primary="$(printf '%s\n' "$ranked" | sed -n '1p')"; \
+      second="$(printf '%s\n' "$ranked" | sed -n '2p')"; \
+      primary="${primary:-https://pypi.org/simple}"; \
+      if [ -n "$second" ] && [ "$second" != "$primary" ]; then \
+        fallback="$second https://pypi.org/simple"; \
+      fi; \
+    fi; \
+    echo "[pip] selected fastest PyPI mirror: $primary (fallback: $fallback)"; \
+    printf '[global]\nindex-url = %s\nextra-index-url = %s\ntimeout = 30\nretries = 5\n' "$primary" "$fallback" > /etc/pip.conf; \
+    reg="${NPM_REGISTRY}"; \
+    if [ -z "$reg" ]; then \
+      best_npm="$({ for u in \
+        "https://registry.npmjs.org" \
+        "https://registry.yarnpkg.com" \
+        "https://registry.npmmirror.com" \
+        "https://mirrors.cloud.tencent.com/npm"; do \
+        ( t="$(curl -fsSL -o /dev/null --connect-timeout 2 --max-time 3 -w "%{time_total}" "$u/typescript" 2>/dev/null)" && echo "$t $u" ) & \
+      done; wait; } | sort -n | awk 'NR==1{print $2}')"; \
+      reg="${best_npm:-https://registry.npmjs.org}"; \
+    fi; \
+    echo "[npm] selected fastest registry: $reg"; \
+    npm config set registry "$reg"
 
 # bbot recursive recon orchestrator (#117): blacklanternsecurity/bbot, AGPL-3.0
 # (same license as ARTEX; standalone CLI dependency, not linked code). Pinned

@@ -22,6 +22,9 @@ services:
       context: .
       args:
         ARTEX_VERSION: ${ARTEX_VERSION:-dev}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        GOPROXY: ${GOPROXY:-}
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
     image: artex:local
     depends_on:
       postgres:

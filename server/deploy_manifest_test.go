@@ -113,6 +113,10 @@ func TestDeploymentArtifactsAndDocsParity(t *testing.T) {
 		"semgrep",
 		"chisel",
 		"kubectl",
+		"/etc/pip.conf",
+		"mirror.accum.se/mirror/pypi.org/simple",
+		"mirrors.aliyun.com/pypi/simple",
+		"pypi.tuna.tsinghua.edu.cn/simple",
 	} {
 		if !strings.Contains(dockerfile, mustDocker) {
 			t.Errorf("Dockerfile missing required component %q", mustDocker)
