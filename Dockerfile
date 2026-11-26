@@ -273,7 +273,7 @@ RUN set -eux; \
     tar -xzf /tmp/netexec.tar.gz -C /tmp/netexec-src --strip-components=1; \
     ok=0; \
     for attempt in 1 2 3; do \
-      if /opt/netexec/bin/pip install --no-cache-dir /tmp/netexec-src; then ok=1; break; fi; \
+      if POETRY_DYNAMIC_VERSIONING_BYPASS="${NETEXEC_VERSION#v}" /opt/netexec/bin/pip install --no-cache-dir /tmp/netexec-src; then ok=1; break; fi; \
       echo "[netexec] pip install attempt ${attempt} failed, retrying in 5s..." >&2; \
       sleep 5; \
     done; \
