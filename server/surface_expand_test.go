@@ -77,3 +77,45 @@ func TestExtractSurfaceFromSamples(t *testing.T) {
 		t.Fatalf("expected CSP sibling host api.corp.local in %v", rep.DiscoveredHosts)
 	}
 }
+
+func TestExtractIntranetSurfaceFromSamples(t *testing.T) {
+	samples := []TrafficComplianceSample{
+		{
+			ID:     "t-intranet",
+			URL:    "http://10.10.1.5:8080/config.js",
+			Status: 200,
+			RespHead: strings.Join([]string{
+				"HTTP/1.1 200 OK",
+				"X-Upstream: 10.10.2.15:8848",
+			}, "\n"),
+			RespBody: `const cfg = {
+				ws: "ws://10.10.2.20:9001/events",
+				cache: "redis://:secret@10.10.3.8:6379/0",
+				k8sSvc: "auth-service.prod.svc.cluster.local:8443",
+				outside: "192.168.99.99:22"
+			};`,
+		},
+	}
+
+	// Fence allows 10.10.0.0/16 and *.svc.cluster.local, excludes 192.168.99.99.
+	allow := func(u string) bool {
+		return strings.Contains(u, "10.10.") || strings.Contains(u, ".svc.cluster.local")
+	}
+
+	rep := ExtractSurfaceFromSamples("89", samples, allow)
+	if len(rep.DiscoveredInternalSubnets) < 3 {
+		t.Fatalf("expected >=3 /24 internal subnets (10.10.1/2/3), got %v", rep.DiscoveredInternalSubnets)
+	}
+	foundNode := map[string]bool{}
+	for _, n := range rep.DiscoveredInternalNodes {
+		foundNode[n.Host] = true
+		if n.Host == "192.168.99.99" {
+			t.Fatal("out-of-fence IP 192.168.99.99 should have been filtered out")
+		}
+	}
+	for _, want := range []string{"10.10.2.15", "10.10.2.20", "10.10.3.8", "auth-service.prod.svc.cluster.local"} {
+		if !foundNode[want] {
+			t.Errorf("expected intranet surface node %q, got %+v", want, rep.DiscoveredInternalNodes)
+		}
+	}
+}
