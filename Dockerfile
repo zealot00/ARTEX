@@ -271,6 +271,7 @@ RUN set -eux; \
       "https://github.com/Pennyw0rth/NetExec/archive/refs/tags/${NETEXEC_VERSION}.tar.gz" -o /tmp/netexec.tar.gz; \
     mkdir -p /tmp/netexec-src; \
     tar -xzf /tmp/netexec.tar.gz -C /tmp/netexec-src --strip-components=1; \
+    sed -i -E 's/"([A-Za-z0-9_.-]+)[[:space:]]*@[[:space:]]*git\+https:\/\/[^"]+"/"\1"/g' /tmp/netexec-src/pyproject.toml; \
     ok=0; \
     for attempt in 1 2 3; do \
       if POETRY_DYNAMIC_VERSIONING_BYPASS="${NETEXEC_VERSION#v}" /opt/netexec/bin/pip install --no-cache-dir /tmp/netexec-src; then ok=1; break; fi; \
