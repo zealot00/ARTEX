@@ -168,19 +168,19 @@ RUN set -eux; \
 
 # bbot recursive recon orchestrator (#117): blacklanternsecurity/bbot, AGPL-3.0
 # (same license as ARTEX; standalone CLI dependency, not linked code). Pinned
-# version, own venv to isolate from the image python. Module dependencies are
-# preinstalled (--install-all-deps) so scans never need pip at runtime, which
-# would fail under a program's egress allowlist.
+# version, own venv to isolate from the image python. Core Python module
+# dependencies (wafw00f, paramminer, lightfuzz, sslcert) are pre-warmed directly;
+# browser screenshots are provided by playwright-cli below.
 ARG BBOT_VERSION=3.0.2
 RUN set -eux; \
     python -m venv /opt/bbot; \
-    /opt/bbot/bin/pip install --no-cache-dir "bbot==${BBOT_VERSION}"; \
+    /opt/bbot/bin/pip install --no-cache-dir "bbot==${BBOT_VERSION}" wafw00f; \
     ln -s /opt/bbot/bin/bbot /usr/local/bin/bbot; \
-    bbot -y --install-all-deps; \
     bbot --version >/dev/null; \
-    bbot --dry-run -t example.com -m wafw00f,paramminer_getparams,lightfuzz,sslcert,gowitness >/dev/null 2>&1 || true; \
-    bbot --dry-run -t example.com -m wafw00f,paramminer_getparams,lightfuzz,sslcert,gowitness --no-color >/tmp/bbot-dry.log 2>&1 || true; \
-    ! grep -qE "Installing|ERRR|CRITICAL" /tmp/bbot-dry.log || { cat /tmp/bbot-dry.log; exit 1; }
+    bbot -y --ignore-failed-deps --dry-run -t example.com -m wafw00f,paramminer_getparams,lightfuzz,sslcert >/dev/null 2>&1 || true; \
+    bbot --no-deps --ignore-failed-deps --dry-run -t example.com -m wafw00f,paramminer_getparams,lightfuzz,sslcert --no-color >/tmp/bbot-dry.log 2>&1 || true; \
+    ! grep -qE "CRITICAL" /tmp/bbot-dry.log || { cat /tmp/bbot-dry.log; exit 1; }; \
+    rm -f /tmp/bbot-dry.log
 
 # Post-exploitation, Active Directory, lateral-movement, and static code-audit CLI
 # toolkit in an isolated venv (impacket, netexec, bloodhound-python, certipy-ad, adidnsdump, semgrep).

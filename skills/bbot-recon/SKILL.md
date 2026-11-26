@@ -49,9 +49,9 @@ nothing enters scope and no module contacts the target. Sources: `crt`,
 `dnsresolve`, `dnscommonsrv`, `baddns`, `baddns_direct`, `baddns_zone`
 (takeover), `sslcert`, `robots`, `securitytxt`, `oauth`,
 `graphql_introspection`, `fingerprintx`, `reflected_parameters`, `retirejs`,
-`badsecrets`, `gowitness`, `iis_shortnames` (loud but targeted),
+`badsecrets`, `iis_shortnames` (loud but targeted),
 `filedownload`, `newsletters`, `hunt`, and the `http` spider (cap it, see
-rate control).
+rate control). (For headless browser screenshots, use `playwright-cli` instead of bbot's `gowitness` module.)
 
 **Loud/invasive**, explicit permission only: `paramminer_getparams`,
 `paramminer_headers`, `paramminer_cookies`, `virtualhost`, `waf_bypass`,
@@ -61,7 +61,7 @@ rate control).
 
 ## Recipes
 
-Common tail for every run: `-om json,txt -o /app/data/tasks/<task_id>/bbot -n <intent-name> -y --no-deps`.
+Common tail for every run: `-om json,txt -o /app/data/tasks/<task_id>/bbot -n <intent-name> -y --no-deps --ignore-failed-deps`.
 `--no-deps` is mandatory: module dependencies are baked into the image, and a
 scan-time dependency check would run pip, which fails (or hangs) under a
 program's egress allowlist. One scan per intent, named after it

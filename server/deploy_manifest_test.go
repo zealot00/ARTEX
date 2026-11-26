@@ -118,6 +118,9 @@ func TestDeploymentArtifactsAndDocsParity(t *testing.T) {
 			t.Errorf("Dockerfile missing required component %q", mustDocker)
 		}
 	}
+	if strings.Contains(dockerfile, "--install-all-deps") || strings.Contains(dockerfile, "gowitness") {
+		t.Errorf("Dockerfile must not use fragile 'bbot --install-all-deps' or 'gowitness' module preinstall")
+	}
 
 	// 4. Verify build.sh packages both skills/ and pocs/, and scripts/backup.sh backs up both data and keys.
 	if !strings.Contains(buildSh, `cp -R skills "$package_root/"`) || !strings.Contains(buildSh, `cp -R pocs "$package_root/"`) {
