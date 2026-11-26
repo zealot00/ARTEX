@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Autumn-27/artex/db"
 	actool "github.com/Autumn-27/norma/tool"
@@ -19,12 +20,43 @@ func findingTrafficBindingEnabled() bool {
 	return FindingTrafficBindingEnabled != nil && FindingTrafficBindingEnabled()
 }
 
+func platformDataAccessContract(has map[string]bool) string {
+	var apis []string
+	for _, spec := range []struct {
+		tool string
+		desc string
+	}{
+		{"list_findings", "list_findings (finding_node_id + standalone finding_id)"},
+		{"list_task_findings", "list_task_findings (task findings with finding_id)"},
+		{"node_detail", "node_detail (full finding/fact/intent payload)"},
+		{"get_task_node_detail", "get_task_node_detail (full task node payload)"},
+		{"get_finding_traffic", "get_finding_traffic (ordered bound traffic & evidence_version)"},
+		{"bind_finding_traffic", "bind_finding_traffic (attach traffic to existing finding_id)"},
+		{"update_finding_report", "update_finding_report (save Markdown report by finding_node_id)"},
+		{"list_task_worker_traces", "list_task_worker_traces / get_task_worker_trace / search_task_worker_traces"},
+		{"search_all_worker_traces", "search_all_worker_traces / get_worker_trace"},
+		{"get_task_graph", "get_task_graph (overall task state)"},
+		{"traffic_search", "traffic_search / traffic_get (captured HTTP traffic)"},
+		{"list_task_checks", "list_task_checks / record_check_result (compliance checks)"},
+		{"solver_status", "solver_status / bb_search (solver tier & shared blackboard)"},
+	} {
+		if has[spec.tool] {
+			apis = append(apis, spec.desc)
+		}
+	}
+	if len(apis) == 0 {
+		return ""
+	}
+	return "\n\n**Platform data access contract (strict)**: NEVER connect to ARTEX's internal PostgreSQL database via `psql` or raw SQL, and NEVER guess internal table/column names (such as `agents`, `agent_prompt_vars`, `agent_triggers`, `activity`, `findings`, `conversations`, `conversation_activities`). Always read and update platform state exclusively through your bound tool APIs: " + strings.Join(apis, "; ") + "."
+}
+
 // Applied after ToolResolve: user descriptions and prompts remain intact, while
 // all actual reporters (including Planner and custom chat agents) see the same
 // API contract. Disabled/unbound tools are never reintroduced here.
 func findingWorkflowTools(agentKey string, tools []actool.CoreTool) ([]actool.CoreTool, string) {
 	if !findingTrafficBindingEnabled() {
 		out := make([]actool.CoreTool, 0, len(tools))
+		has := map[string]bool{}
 		for _, tool := range tools {
 			if tool.Name() == "bind_finding_traffic" {
 				continue
@@ -42,9 +74,10 @@ func findingWorkflowTools(agentKey string, tools []actool.CoreTool) ([]actool.Co
 					tool = DecorateTool(tool, tool.Description(), schema)
 				}
 			}
+			has[tool.Name()] = true
 			out = append(out, tool)
 		}
-		return out, ""
+		return out, platformDataAccessContract(has)
 	}
 	out := append([]actool.CoreTool(nil), tools...)
 	has := map[string]bool{}
@@ -82,6 +115,7 @@ func findingWorkflowTools(agentKey string, tools []actool.CoreTool) ([]actool.Co
 	if guidance != "" || has["get_finding_traffic"] || has["update_finding_report"] {
 		guidance += findingIDGuidance
 	}
+	guidance += platformDataAccessContract(has)
 	return out, guidance
 }
 

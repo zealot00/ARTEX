@@ -66,3 +66,22 @@ func TestFindingWorkflowSharedAssemblyAndSwitch(t *testing.T) {
 		t.Fatal("reintroduced disabled tool or its guidance")
 	}
 }
+
+func TestPlatformDataAccessContractForbidsRawInternalSQL(t *testing.T) {
+	oldPolicy, oldResolve, oldAugment := FindingTrafficBindingEnabled, ToolResolve, ToolAugment
+	t.Cleanup(func() { FindingTrafficBindingEnabled, ToolResolve, ToolAugment = oldPolicy, oldResolve, oldAugment })
+	ToolAugment = nil
+	ToolResolve = nil
+	FindingTrafficBindingEnabled = func() bool { return true }
+
+	ts := NewToolSet(nil, "fixture")
+	_, def, cleanup := AugmentTools(t.Context(), "worker", []actool.CoreTool{ts.addFinding(), ts.listFindings()})
+	defer cleanup()
+
+	if !strings.Contains(def.FindingGuidance, "NEVER connect to ARTEX's internal PostgreSQL database") {
+		t.Fatalf("expected raw internal SQL prohibition in guidance, got: %s", def.FindingGuidance)
+	}
+	if !strings.Contains(def.FindingGuidance, "list_findings") {
+		t.Fatalf("expected bound tool list_findings in platform data access contract, got: %s", def.FindingGuidance)
+	}
+}

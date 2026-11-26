@@ -8,6 +8,14 @@ import "os"
 // empty-BaseURL providers inherit unexpected third-party endpoints.
 var secretEnv = []string{
 	"ARTEX_PG_DSN",
+	"POSTGRES_PASSWORD",
+	"POSTGRES_USER",
+	"POSTGRES_DB",
+	"PGPASSWORD",
+	"PGHOST",
+	"PGUSER",
+	"PGDATABASE",
+	"PGPORT",
 	"ANTHROPIC_API_KEY",
 	"OPENAI_API_KEY",
 	"ANTHROPIC_BASE_URL",
