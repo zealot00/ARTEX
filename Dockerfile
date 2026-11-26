@@ -182,21 +182,22 @@ RUN set -eux; \
     bbot --dry-run -t example.com -m wafw00f,paramminer_getparams,lightfuzz,sslcert,gowitness --no-color >/tmp/bbot-dry.log 2>&1 || true; \
     ! grep -qE "Installing|ERRR|CRITICAL" /tmp/bbot-dry.log || { cat /tmp/bbot-dry.log; exit 1; }
 
-# Post-exploitation, Active Directory, and lateral-movement CLI toolkit in an
-# isolated venv (impacket, netexec, bloodhound-python, certipy-ad, adidnsdump).
+# Post-exploitation, Active Directory, lateral-movement, and static code-audit CLI
+# toolkit in an isolated venv (impacket, netexec, bloodhound-python, certipy-ad, adidnsdump, semgrep).
 # Guarded at runtime by lateral_gate, electronic fence, and prod_safe_mode.
 RUN set -eux; \
     apt-get update && apt-get install -y --no-install-recommends gcc libffi-dev libssl-dev libkrb5-dev; \
     python -m venv /opt/pentest-tools; \
     /opt/pentest-tools/bin/pip install --no-cache-dir \
-      impacket netexec bloodhound certipy-ad adidnsdump; \
+      impacket netexec bloodhound certipy-ad adidnsdump semgrep; \
     for bin in /opt/pentest-tools/bin/impacket-* /opt/pentest-tools/bin/nxc /opt/pentest-tools/bin/netexec \
-               /opt/pentest-tools/bin/bloodhound-python /opt/pentest-tools/bin/certipy /opt/pentest-tools/bin/adidnsdump; do \
+               /opt/pentest-tools/bin/bloodhound-python /opt/pentest-tools/bin/certipy /opt/pentest-tools/bin/adidnsdump \
+               /opt/pentest-tools/bin/semgrep; do \
       if [ -e "$bin" ]; then ln -sf "$bin" "/usr/local/bin/$(basename "$bin")"; fi; \
     done; \
     apt-get purge -y --auto-remove gcc libffi-dev libssl-dev libkrb5-dev; \
     rm -rf /var/lib/apt/lists/*; \
-    chisel --help >/dev/null; kubectl version --client >/dev/null
+    chisel --help >/dev/null; kubectl version --client >/dev/null; semgrep --version >/dev/null
 
 
 # Preinstall Playwright MCP and CLI (globally) so no npx network download is needed at runtime.

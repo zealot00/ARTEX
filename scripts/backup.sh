@@ -63,9 +63,12 @@ echo "wrote $DB_OUT ($(du -h "$DB_OUT" | cut -f1))"
 
 if [ "$WITH_DATA" -eq 1 ]; then
   DATA_OUT="$OUTPUT_DIR/artex-data-$TS.tar.gz"
-  # data/ contains files written by the container (root); unreadable ones make
-  # tar exit 2. Fail loudly rather than ship a partial archive.
-  if ! tar -czf "$DATA_OUT" data 2>"$OUTPUT_DIR/.tar.err"; then
+  # data/ and keys/ (jwt.key + AES-256-GCM encrypted wordlists vault) contain files
+  # written by the container; unreadable ones make tar exit 2.
+  TAR_TARGETS="data"
+  [ -d keys ] && TAR_TARGETS="data keys"
+  # shellcheck disable=SC2086
+  if ! tar -czf "$DATA_OUT" $TAR_TARGETS 2>"$OUTPUT_DIR/.tar.err"; then
     rm -f "$DATA_OUT"
     echo "data archive failed (run as root so container-written files are readable):" >&2
     head -5 "$OUTPUT_DIR/.tar.err" >&2

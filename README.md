@@ -80,7 +80,7 @@ Sync asset data directly from [ScopeSentry](https://github.com/Autumn-27/ScopeSe
 ### Option 1: one-click install script (recommended)
 
 ```bash
-git clone https://github.com/BaaRai/ARTEX.git
+git clone https://github.com/zealot00/ARTEX.git
 cd ARTEX
 ./install.sh
 ```
@@ -98,7 +98,7 @@ The web UI is published on `127.0.0.1` by default. To reach it from another mach
 ### Option 2: Docker Compose (manual)
 
 ```bash
-git clone https://github.com/BaaRai/ARTEX.git
+git clone https://github.com/zealot00/ARTEX.git
 cd ARTEX
 cp .env.example .env          # set POSTGRES_PASSWORD, optionally ANTHROPIC_API_KEY
 docker compose up -d --build  # builds artex from this checkout + starts postgres
@@ -108,7 +108,7 @@ docker compose up -d --build  # builds artex from this checkout + starts postgre
 > The image is built locally. There is no published image to pull: the previous
 > default pointed at a third-party namespace that no longer hosts this project.
 
-The image already includes common tools (ripgrep/curl/vim/npm/nmap…); `./skills` and `./data` are persisted via bind mounts.
+The image already includes common recon, exploitation, AD/lateral, and static-audit tools (`nuclei` + offline `/opt/nuclei-templates`, `semgrep`, `impacket`, `netexec`, `bloodhound-python`, `certipy`, `chisel`, `kubectl`, `sqlmap`, `ffuf`, `httpx`, `subfinder`, `katana`, `dalfox`, `bbot`, `hydra`, `nmap`…); `./data`, `./keys` (including `jwt.key` and the AES-256-GCM encrypted wordlist vault), `./skills`, and `./pocs` (75+ hot-loaded infrastructure/intranet PoCs) are persisted via bind mounts.
 
 For remote MCP, you can choose `http` (Streamable HTTP) or `sse` (legacy SSE) in system settings.
 Legacy SSE servers usually establish the event stream with `GET /sse`, then receive JSON-RPC requests via the
@@ -117,7 +117,7 @@ Legacy SSE servers usually establish the event stream with `GET /sse`, then rece
 
 ### Option 3: download prebuilt binaries (Releases)
 
-Download the zip for your platform from [Releases](https://github.com/BaaRai/ARTEX/releases); after extracting you get `artex` + `start.sh` (`start.bat` on Windows) + `skills/` + `config.example.json`:
+Download the zip for your platform from [Releases](https://github.com/zealot00/ARTEX/releases); after extracting you get `artex` + `start.sh` (`start.bat` on Windows) + `skills/` + `pocs/` + `config.example.json`:
 
 ```bash
 cp config.example.json config.json   # fill in the database connection
@@ -221,10 +221,10 @@ docker image prune -f          # clean up old images (optional)
 
 ### Option 3: prebuilt binaries (Releases)
 
-Download the new version's zip from [Releases](https://github.com/BaaRai/ARTEX/releases), stop the old process, then overwrite `artex` and `skills/` (keep your `config.json` and `data/`), and restart:
+Download the new version's zip from [Releases](https://github.com/zealot00/ARTEX/releases), stop the old process, then overwrite `artex`, `skills/`, and `pocs/` (keep your `config.json`, `keys/`, and `data/`), and restart:
 
 ```bash
-cp -r <extracted dir>/skills ./ && cp <extracted dir>/artex ./
+cp -r <extracted dir>/skills ./ && cp -r <extracted dir>/pocs ./ && cp <extracted dir>/artex ./
 ./start.sh
 ```
 
@@ -263,6 +263,8 @@ Optional: `ARTEX_LLM_PROVIDER` (anthropic | openai | openai-responses | ollama) 
 - `ARTEX_LLM_DISABLE_ENV_FALLBACK=1`: disable automatic startup fallback to `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` when no active DB profile exists.
 - `ARTEX_DISABLE_WEB_SEARCH=1`: force-disable outbound `web_search` tool execution and settings tests.
 - `ARTEX_NUCLEI_TEMPLATES_DIR` / `NUCLEI_TEMPLATES_DIR`: path to offline `nuclei-templates` directory (defaults to `/opt/nuclei-templates` in the Docker image).
+- `ARTEX_POCS_DIR`: path to hot-loaded file-based enterprise PoC directory (defaults to `./pocs` locally and `/app/pocs` in Docker).
+- `ARTEX_SEMGREP_RULES_DIR`: optional path to custom/offline Semgrep rules used by `code_scan_semgrep`.
 - `ARTEX_OOB_BASE_URL`: externally reachable base URL for intranet OOB callbacks (e.g. `http://10.10.0.5:8787`), used by `oob_create_token` and `run_poc` when verifying blind SSRF/XXE/RCE without public `interactsh`.
 - All LLM and model-discovery HTTP clients refuse `30x` redirects so API keys and prompts never follow unexpected upstream redirects.
 
@@ -321,8 +323,16 @@ External orchestrators, ticketing pipelines, or coding agents can invoke ARTEX a
 - **Persistent depth sessions & multi-hop SOCKS5 pivoting**: once lateral execution is approved, agents manage task-scoped persistent `pty`, `ssh` (with `jump_session_id` multi-hop chaining, built-in `127.0.0.1` SOCKS5 proxy, and server-side `credential_id` resolution), and `tunnel` processes via `depth_session_open` / `depth_session_exec` / `depth_session_list` / `depth_session_close`; operators inspect or terminate live sessions via `GET`/`DELETE /api/tasks/{id}/sessions`, and all sessions auto-close when a task finishes or is deleted.
 - **Electronic fence (strict scope geofence)**: pass `fence_rules` (CIDRs, IPs, domains, `*.domain` wildcards, or URL prefixes) and `fence_enabled: true` on `POST /api/tasks` (or update via `GET`/`PUT /api/tasks/{id}/fence`) to hard-block any tool target, broader CIDR scan, or `30x` HTTP redirect outside the authorized boundary across Planner, Workers, and MainAgent.
 - **Encrypted, model-opaque wordlist vault**: manage password/username/userpass dictionaries via admin-JWT-only endpoints (`GET /api/wordlists`, `POST /api/wordlists`, `DELETE /api/wordlists/{id}`); entries are encrypted at rest with AES-256-GCM under `<keyDir>/wordlists/` (outside the agent workspace and never stored in PostgreSQL), while agents invoke `list_wordlists` (metadata only), `run_credential_audit`, and lockout-safe `run_password_spray` (`nxc`-backed, capped at `1–3` passwords/round with electronic-fence, `lateral_gate`, and `prod_safe_mode` enforcement plus masked password output).
-- **Private PoC repository, offline templates & intranet OOB verification**: manage internal `nuclei_yaml` / `python_script` PoCs via admin-JWT-only endpoints (`GET/POST /api/pocs`, `DELETE /api/pocs/{id}`); agents discover both private PoCs and offline `/opt/nuclei-templates` via `search_pocs`, execute them under electronic-fence and `prod_safe_mode` rate limits via `run_poc`, and verify blind vulnerabilities in air-gapped networks via `/oob/{token}` (`oob_create_token`, `oob_poll_hits`, `GET /api/tasks/{id}/oob`) while retaining chained secondary exploitation (`skills/poc-verify-exploit`).
-- **Web UI controls & bilingual (`zh-CN` / `en`) support**: manage encrypted dictionaries and enterprise private PoCs on `/system/settings` (`Encrypted Wordlists`, `Enterprise Private PoC Repository`), edit electronic-fence rules, approve foothold-gated lateral movement, configure host-scoped proxy auth header injection (`/api/tasks/{id}/proxy-headers`), inspect task outbound audit logs (`/api/tasks/{id}/outbound`), and terminate live depth sessions on `/function/tasks/detail` (`Depth & Fence` tab), with a topbar `zh-CN` / `en` switcher (`web/src/lib/i18n/`).
+- **Private PoC repository, hot-loaded `./pocs` catalog, offline templates & intranet OOB verification**: manage internal `nuclei_yaml` / `python_script` PoCs via admin-JWT-only endpoints (`GET/POST /api/pocs`, `DELETE /api/pocs/{id}`) or drop `.yaml`/`.py` files directly into `./pocs/` (75+ built-in infrastructure & middleware PoCs covering SMB/Samba, Kubernetes/Kubelet/etcd/APIServer, Docker/Harbor, SSH, NTP, CUPS/IPP print services, PostgreSQL, Redis/Sentinel, MySQL, MongoDB, Memcached, ZooKeeper, OpenStack, Elastic, Nacos, etc.); agents run automated port/fingerprint baselines via `run_infra_baseline`, search private + offline `/opt/nuclei-templates` via `search_pocs`, execute or author custom inline PoCs via `run_poc` (`save_poc` to persist), and verify blind vulnerabilities in air-gapped networks via `/oob/{token}` (`oob_create_token`, `oob_poll_hits`, `GET /api/tasks/{id}/oob`).
+- **Asset-driven hunt matrix, OpenAPI/JS contract extraction & OSS white-box/gray-box linkage**:
+  - **Asset-to-Hunt Matrix (`plan_asset_hunt`)**: continuously cross-references task assets against intent coverage, tags endpoints by parameter semantics (`idor_bola`, `ssrf_oob`, `path_file_ssti`, `biz_race_massassign`, `injection`), flags cross-task inherited assets (`INHERITED/HISTORICAL ASSET` freshness gate), maps 25+ open-source fingerprints (RuoYi, JeecgBoot, Nacos, JumpServer, Grafana, Harbor, MinIO, Keycloak, etc.) to source repositories, and injects prioritized uncovered targets into every Planner round.
+  - **Web Contract & Traffic-Driven API Auditing (`extract_web_contracts`, `traffic_fuzz_audit`)**: automatically harvests Swagger/OpenAPI specs (`/v3/api-docs`, `/swagger.json`, etc.) and front-end JS bundle routes into the task's asset graph, and replays captured proxy traffic across unauthenticated/low-privilege roles.
+  - **Open-Source Component Source Acquisition & Static Code Audit (`oss_fetch_source`, `code_scan_semgrep`, `codeaudit`)**: fetches matching version tags or unpacks `.zip`/`.jar`/`.war` archives into `<task_dir>/oss-src/<component>`, runs Semgrep alongside native multi-language entrypoint/sink/auth-gap/symbol/dependency analyzers (`code_map_entrypoints`, `code_scan_sinks`, `code_audit_auth_gaps`, `code_trace_symbol`, `code_read_context`, `code_audit_deps`), and links findings back to live assets for dynamic verification.
+- **Shared Uncertainty Blackboard, MazeRunner Stagnation Triage, Cascading Belief Revision & Resource Leases**:
+  - **Uncertainty Blackboard (`bb_record`, `bb_search`, `bb_corroborate`)**: Cairn-inspired shared working memory for mid-run uncertain clues (`anomaly`, `hypothesis`, `precondition_need`, `deferred_endpoint`, `env_constraint`) with an explicit epistemic lifecycle (`tentative` → `corroborated` → `promoted` / `refuted` / `quarantined`), protected from cold-digest loss.
+  - **Auto-Reactivation & Anti-Deception Gate**: automatically promotes deferred 401/403 endpoints and precondition bounties to `[UNBLOCKED & READY TO RE-TEST]` when credentials, proxy headers, sessions, or internal paths arrive; automatically quarantines responses matching benign baseline hashes (`baseline_hash == probe_hash`) or static honeypot canary tokens; triggers MazeRunner failure-triage mode on stagnation.
+  - **Cascading Belief Revision (`invalidate_fact_cascade`) & Concurrent Leases (`resource_lease_acquire`, `resource_lease_release`)**: invalidating a disproved premise automatically halts dependent `open` intents down the exploration graph; `shared_read` / `exclusive_mutate` leases prevent concurrent workers from clobbering shared sessions or triggering account lockouts.
+- **Web UI controls & bilingual (`zh-CN` / `en`) support**: manage encrypted dictionaries and enterprise private PoCs on `/system/settings` (`Encrypted Wordlists`, `Enterprise Private PoC Repository`), edit electronic-fence rules, approve foothold-gated lateral movement, configure host-scoped proxy auth header injection (`/api/tasks/{id}/proxy-headers` with multi-host merge), inspect task outbound audit logs (`/api/tasks/{id}/outbound`), and terminate live depth sessions on `/function/tasks/detail` (`Depth & Fence` tab), with a topbar `zh-CN` / `en` switcher (`web/src/lib/i18n/`).
 - **Business-logic red-team probes & outbound audit**: includes `authz_replay` (multi-role/unauth/bypass IDOR comparator), `race_probe` (barrier-synchronized concurrency probe with `prod_safe_mode` cap), `skills/biz-logic-audit`, and automatic outbound connection auditing embedded into both standard (`GET /api/report`) and MLPS (`GET /api/tasks/{id}/report/mlps`) Markdown reports.
 - **Aggregated polling**: `GET /api/tasks/{id}/workorder` returns `{task, terminal, outcome, pending_approvals, pending_approval_count}` in one request, alongside `GET /api/exploration/findings?task={id}`, `GET /api/report?task={id}`, and SSE `GET /api/exploration/activity/stream?task={id}`.
 
@@ -355,8 +365,10 @@ curl -H "X-API-Key: artex_ak_..." http://127.0.0.1:8787/api/tasks/1/report/mlps
 
 | Domain | ARTEX Capabilities & Tooling | Readiness | Notes / Boundaries |
 | :--- | :--- | :--- | :--- |
-| **Attack Surface & Recon** | `bbot`, `subfinder`, `httpx`, `nmap`, `katana`, `playwright`, ScopeSentry sync, `skills/bbot-recon`, `skills/scopesentry` | Production-ready | Dual-graph exploration + asset coverage tracking |
-| **Web, API & Middleware** | `nuclei` + offline `nuclei-templates` (`/opt/nuclei-templates`), `pocs` private repo (`search_pocs` / `run_poc`), intranet OOB callback (`oob_create_token` / `oob_poll_hits`), `ffuf`, `dalfox`, `sqlmap`, `sslscan`, `skills/poc-verify-exploit`, `skills/api-recon`, `skills/api-security`, `skills/codeaudit`, `skills/php2shell` | Production-ready | Works offline; blind vuln OOB without public `interactsh`; chained secondary exploitation under fence & `prod_safe_mode` |
+| **Attack Surface & Recon** | `bbot`, `subfinder`, `httpx`, `nmap`, `katana`, `playwright`, ScopeSentry sync, `plan_asset_hunt`, `extract_web_contracts`, `skills/bbot-recon`, `skills/scopesentry` | Production-ready | Dual-graph exploration + asset-driven hunt matrix + OpenAPI/JS route extraction |
+| **Web, API, Infra & PoC** | `nuclei` + offline `nuclei-templates` (`/opt/nuclei-templates`), 75+ hot-loaded `./pocs` + DB private repo (`run_infra_baseline` / `search_pocs` / `run_poc` / `save_poc`), intranet OOB callback (`oob_create_token` / `oob_poll_hits`), `traffic_fuzz_audit`, `authz_replay`, `race_probe`, `ffuf`, `dalfox`, `sqlmap`, `sslscan`, `skills/poc-verify-exploit`, `skills/biz-logic-audit` | Production-ready | Works offline; blind vuln OOB without public `interactsh`; traffic-driven multi-role authz & race auditing |
+| **White-Box & OSS Code Audit** | `oss_fetch_source`, `code_scan_semgrep` (`semgrep`), `code_map_entrypoints`, `code_scan_sinks`, `code_audit_auth_gaps`, `code_trace_symbol`, `code_read_context`, `code_audit_deps`, `skills/codeaudit` | Production-ready | Automated OSS repo/tag fetch + archive unpack + Semgrep & native multi-language static analysis linked to live gray-box verification |
+| **Uncertainty Blackboard & Triage** | `bb_record`, `bb_search`, `bb_corroborate`, `invalidate_fact_cascade`, `resource_lease_acquire`, `resource_lease_release` | Production-ready | Cairn-style shared uncertainty blackboard, precondition auto-reactivation, MazeRunner stagnation triage, anti-deception canary gate, and cascading belief revision |
 | **Auth & Encrypted Wordlist Vault** | AES-256-GCM vault (`wordlists/vault.go`), `list_wordlists`, `run_credential_audit` (`hydra`), `run_password_spray` (`nxc`), `skills/service-auth-audit` | Production-ready | Model-opaque (plaintext never enters LLM context); lockout-safe spray cap (`1–3` passwords/round) |
 | **AD / Windows Lateral Audit** | `impacket`, `netexec` (`nxc`), `bloodhound-python`, `certipy-ad`, `adidnsdump`, `ldap-utils`, `krb5-user`, `smbclient`, `skills/ad-windows-audit` | Ready (Linux-remote) | Covers SMB/WinRM/LDAP/Kerberos/ADCS remotely; no Windows-native C2/SharpHound binary compilation inside container |
 | **Cloud & Kubernetes Audit** | `kubectl`, `skills/cloud-k8s-audit`, `skills/host-privesc-audit` | Ready (API/RBAC) | Covers K8s API/RBAC/pod/container posture & Linux privilege-escalation checks |
