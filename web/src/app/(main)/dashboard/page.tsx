@@ -44,24 +44,30 @@ import { cn } from "@/lib/utils";
 
 // ── chart constants ───────────────────────────────────────────────────────────
 
-const dailyTrendConfig = {
-  input: { label: "Input", color: "hsl(217 91% 60%)" },
-  output: { label: "Output", color: "hsl(263 70% 60%)" },
-  cacheRead: { label: "Cache read", color: "hsl(160 60% 45%)" },
-} satisfies ChartConfig;
+const DAILY_TREND_COLORS = {
+  input: "hsl(217 91% 60%)",
+  output: "hsl(263 70% 60%)",
+  cacheRead: "hsl(160 60% 45%)",
+};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function fmtRel(ts?: string | number): string {
+function fmtRel(
+  ts: string | number | undefined,
+  t: (
+    key: "dashboard.rel.secondsAgo" | "dashboard.rel.minutesAgo" | "dashboard.rel.hoursAgo" | "dashboard.rel.daysAgo",
+    vars?: Record<string, string | number>,
+  ) => string,
+): string {
   if (!ts) return "—";
   const ms = Date.now() - (typeof ts === "number" ? ts * 1000 : Date.parse(ts as string));
   const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s ago`;
+  if (s < 60) return t("dashboard.rel.secondsAgo", { count: s });
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return t("dashboard.rel.minutesAgo", { count: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24) return t("dashboard.rel.hoursAgo", { count: h });
+  return t("dashboard.rel.daysAgo", { count: Math.floor(h / 24) });
 }
 
 function fmtTokens(n: number): string {
@@ -70,14 +76,14 @@ function fmtTokens(n: number): string {
   return String(n);
 }
 
-const ASSET_TYPE_LABELS: Record<string, string> = {
-  root_domain: "Root domain",
-  ip: "IP",
-  subdomain: "Subdomain",
-  app: "App",
-  service: "Service",
-  endpoint: "Endpoint",
-};
+const ASSET_TYPE_KEYS = {
+  root_domain: "dashboard.assetType.root_domain",
+  ip: "dashboard.assetType.ip",
+  subdomain: "dashboard.assetType.subdomain",
+  app: "dashboard.assetType.app",
+  service: "dashboard.assetType.service",
+  endpoint: "dashboard.assetType.endpoint",
+} as const;
 
 const ASSET_COLORS: Record<string, string> = {
   root_domain: "bg-blue-500",
@@ -132,6 +138,15 @@ function SectionTitle({
 
 export default function DashboardPage() {
   const { t } = useI18n();
+  const dailyTrendConfig = React.useMemo(
+    () =>
+      ({
+        input: { label: t("dashboard.chart.input"), color: DAILY_TREND_COLORS.input },
+        output: { label: t("dashboard.chart.output"), color: DAILY_TREND_COLORS.output },
+        cacheRead: { label: t("dashboard.chart.cacheRead"), color: DAILY_TREND_COLORS.cacheRead },
+      }) satisfies ChartConfig,
+    [t],
+  );
   // data state
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const [findings, setFindings] = React.useState<Finding[]>([]);
@@ -499,7 +514,7 @@ export default function DashboardPage() {
       <div>
         <div>
           <h1 className="text-lg font-semibold tracking-tight">{t("dashboard.title")}</h1>
-          <p className="text-xs text-muted-foreground">System-wide status · live refresh</p>
+          <p className="text-xs text-muted-foreground">{t("dashboard.subtitle")}</p>
         </div>
       </div>
 
@@ -509,7 +524,7 @@ export default function DashboardPage() {
         <Card className="gap-1">
           <CardHeader className="pb-0">
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <TargetIcon className="size-3" /> Active tasks
+              <TargetIcon className="size-3" /> {t("dashboard.activeTasks")}
             </div>
             <div className="flex items-baseline gap-1.5">
               <span className="text-2xl font-semibold tabular-nums">{tasksByStatus.running ?? 0}</span>
@@ -517,10 +532,16 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10px]">
-            {(tasksByStatus.running ?? 0) > 0 && <span className="text-blue-400">Exploring {tasksByStatus.running}</span>}
-            {(tasksByStatus.paused ?? 0) > 0 && <span className="text-amber-400">Paused {tasksByStatus.paused}</span>}
-            {(tasksByStatus.done ?? 0) > 0 && <span className="text-emerald-400">Completed {tasksByStatus.done}</span>}
-            {tasks.length === 0 && <span className="text-muted-foreground">No tasks</span>}
+            {(tasksByStatus.running ?? 0) > 0 && (
+              <span className="text-blue-400">{t("dashboard.exploringCount", { count: tasksByStatus.running })}</span>
+            )}
+            {(tasksByStatus.paused ?? 0) > 0 && (
+              <span className="text-amber-400">{t("dashboard.pausedCount", { count: tasksByStatus.paused })}</span>
+            )}
+            {(tasksByStatus.done ?? 0) > 0 && (
+              <span className="text-emerald-400">{t("dashboard.completedCount", { count: tasksByStatus.done })}</span>
+            )}
+            {tasks.length === 0 && <span className="text-muted-foreground">{t("dashboard.noTasks")}</span>}
           </CardContent>
         </Card>
 
@@ -528,15 +549,23 @@ export default function DashboardPage() {
         <Card className="gap-1">
           <CardHeader className="pb-0">
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <BugIcon className="size-3" /> Confirmed findings
+              <BugIcon className="size-3" /> {t("dashboard.confirmedFindings")}
             </div>
             <div className="text-2xl font-semibold tabular-nums">{findings.length}</div>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2.5 text-[10px]">
-            <span className="text-rose-500">Critical {findingsBySev.critical}</span>
-            <span className="text-red-400">High {findingsBySev.high}</span>
-            <span className="text-amber-400">Medium {findingsBySev.medium}</span>
-            <span className="text-slate-400">Low {findingsBySev.low}</span>
+            <span className="text-rose-500">
+              {t("status.severity.critical")} {findingsBySev.critical}
+            </span>
+            <span className="text-red-400">
+              {t("status.severity.high")} {findingsBySev.high}
+            </span>
+            <span className="text-amber-400">
+              {t("status.severity.medium")} {findingsBySev.medium}
+            </span>
+            <span className="text-slate-400">
+              {t("status.severity.low")} {findingsBySev.low}
+            </span>
           </CardContent>
         </Card>
 
@@ -544,18 +573,18 @@ export default function DashboardPage() {
         <Card className="gap-1">
           <CardHeader className="pb-0">
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <NetworkIcon className="size-3" /> Asset nodes
+              <NetworkIcon className="size-3" /> {t("dashboard.assetNodes")}
             </div>
             <div className="text-2xl font-semibold tabular-nums">{totalAssets}</div>
           </CardHeader>
-          <CardContent className="text-[10px] text-muted-foreground">Shared across tasks</CardContent>
+          <CardContent className="text-[10px] text-muted-foreground">{t("dashboard.sharedAcrossTasks")}</CardContent>
         </Card>
 
         {/* Traffic exchanges */}
         <Card className="gap-1">
           <CardHeader className="pb-0">
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <ActivityIcon className="size-3" /> Traffic exchanges
+              <ActivityIcon className="size-3" /> {t("dashboard.trafficExchanges")}
             </div>
             <div className="text-2xl font-semibold tabular-nums">{traffic.length}</div>
           </CardHeader>
@@ -563,10 +592,10 @@ export default function DashboardPage() {
             {settings?.traffic_capture ? (
               <>
                 <LiveDot />
-                <span>Recording</span>
+                <span>{t("dashboard.recording")}</span>
               </>
             ) : (
-              <span>Capture is off</span>
+              <span>{t("dashboard.captureOff")}</span>
             )}
           </CardContent>
         </Card>
@@ -575,15 +604,18 @@ export default function DashboardPage() {
         <Card className="gap-1">
           <CardHeader className="pb-0">
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <ZapIcon className="size-3" /> Token usage
+              <ZapIcon className="size-3" /> {t("dashboard.tokenUsage")}
             </div>
             <div className="text-2xl font-semibold tabular-nums">
               {fmtTokens(displayedTokens.input + displayedTokens.output) || "—"}
             </div>
           </CardHeader>
           <CardContent className="text-[10px] text-muted-foreground">
-            In {fmtTokens(displayedTokens.input)} (incl. cache {fmtTokens(displayedTokens.cacheRead)}) · Out{" "}
-            {fmtTokens(displayedTokens.output)}
+            {t("dashboard.tokenSummary", {
+              in: fmtTokens(displayedTokens.input),
+              cache: fmtTokens(displayedTokens.cacheRead),
+              out: fmtTokens(displayedTokens.output),
+            })}
           </CardContent>
         </Card>
       </div>
@@ -594,24 +626,20 @@ export default function DashboardPage() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs font-semibold">
             <ZapIcon className="size-3.5 text-muted-foreground" />
-            LLM token usage
+            {t("dashboard.llmTokenUsage")}
             {/* Data source toggle: old = activity stats (includes historical tasks), new = the llm_usage metering ledger (more accurate, only covers data since it was enabled) */}
             <div className="ml-1 flex gap-0.5 rounded-md border bg-muted/30 p-0.5">
               {(
                 [
-                  { v: "old", label: "Old" },
-                  { v: "new", label: "New" },
+                  { v: "old", label: t("dashboard.tokenSourceOld") },
+                  { v: "new", label: t("dashboard.tokenSourceNew") },
                 ] as const
               ).map(({ v, label }) => (
                 <button
                   type="button"
                   key={v}
                   onClick={() => setTokenVersion(v)}
-                  title={
-                    v === "new"
-                      ? "New: from the llm_usage metering ledger, exact per call and including aborted runs; only covers data since it was enabled"
-                      : "Old: from activity stats (includes historical tasks); aborted runs are not counted and it cannot break down by model"
-                  }
+                  title={v === "new" ? t("dashboard.tokenSourceNewTip") : t("dashboard.tokenSourceOldTip")}
                   className={cn(
                     "rounded px-2 py-0.5 text-[9px] font-medium transition-colors",
                     tokenVersion === v
@@ -624,7 +652,7 @@ export default function DashboardPage() {
               ))}
             </div>
             <span className="text-[10px] font-normal text-muted-foreground">
-              {tokenVersion === "new" ? "llm_usage" : "activity"}
+              {tokenVersion === "new" ? t("dashboard.tokenSourceNewLabel") : t("dashboard.tokenSourceOldLabel")}
             </span>
           </div>
           {/* Profile tabs */}
@@ -639,7 +667,7 @@ export default function DashboardPage() {
                   : "bg-muted/30 text-muted-foreground hover:text-foreground",
               )}
             >
-              All
+              {t("dashboard.all")}
             </button>
             {llmProfiles.map((p) => {
               const key = Number(p.id);
@@ -668,7 +696,7 @@ export default function DashboardPage() {
                           : "bg-emerald-500/20 text-emerald-400",
                       )}
                     >
-                      Default
+                      {t("dashboard.default")}
                     </span>
                   )}
                 </button>
@@ -683,11 +711,13 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-4">
             {/* Total */}
             <div>
-              <div className="text-[10px] text-muted-foreground">Total (input+output)</div>
+              <div className="text-[10px] text-muted-foreground">{t("dashboard.totalInputOutput")}</div>
               <div className="mt-0.5 text-3xl font-bold tabular-nums tracking-tight">
                 {fmtTokens(displayedTokens.input + displayedTokens.output) || "—"}
               </div>
-              <div className="mt-0.5 text-[10px] text-muted-foreground">{displayedTokens.taskCount} tasks</div>
+              <div className="mt-0.5 text-[10px] text-muted-foreground">
+                {t("dashboard.tasksCount", { count: displayedTokens.taskCount })}
+              </div>
             </div>
 
             {/* Per-type bars */}
@@ -697,19 +727,19 @@ export default function DashboardPage() {
                 const total = displayedTokens.input + displayedTokens.output;
                 return [
                   {
-                    label: "Input (uncached)",
+                    label: t("dashboard.inputUncached"),
                     value: displayedTokens.input - displayedTokens.cacheRead,
                     barColor: dailyTrendConfig.input.color!,
                     text: "text-blue-400",
                   },
                   {
-                    label: "Cache hits",
+                    label: t("dashboard.cacheHits"),
                     value: displayedTokens.cacheRead,
                     barColor: dailyTrendConfig.cacheRead.color!,
                     text: "text-emerald-400",
                   },
                   {
-                    label: "Output",
+                    label: t("dashboard.output"),
                     value: displayedTokens.output,
                     barColor: dailyTrendConfig.output.color!,
                     text: "text-violet-400",
@@ -741,7 +771,7 @@ export default function DashboardPage() {
               const hitPct = denominator > 0 ? Math.round((displayedTokens.cacheRead / denominator) * 100) : 0;
               return (
                 <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2 text-[10px]">
-                  <span className="text-muted-foreground">Cache hit rate</span>
+                  <span className="text-muted-foreground">{t("dashboard.cacheHitRate")}</span>
                   <span
                     className={cn("font-semibold tabular-nums", hitPct > 50 ? "text-emerald-400" : "text-amber-400")}
                   >
@@ -769,11 +799,11 @@ export default function DashboardPage() {
               <div className="flex gap-0.5 rounded-md border bg-muted/30 p-0.5">
                 {(
                   [
-                    { days: 7, label: "7d" },
-                    { days: 30, label: "30d" },
-                    { days: 90, label: "3mo" },
-                    { days: 180, label: "6mo" },
-                    { days: 365, label: "1y" },
+                    { days: 7, label: t("dashboard.range.7d") },
+                    { days: 30, label: t("dashboard.range.30d") },
+                    { days: 90, label: t("dashboard.range.90d") },
+                    { days: 180, label: t("dashboard.range.180d") },
+                    { days: 365, label: t("dashboard.range.365d") },
                   ] as const
                 ).map(({ days, label }) => (
                   <button
@@ -798,7 +828,7 @@ export default function DashboardPage() {
                 className="flex flex-1 items-center justify-center rounded-lg border bg-muted/10 text-xs text-muted-foreground"
                 style={{ minHeight: 180 }}
               >
-                No data
+                {t("dashboard.noData")}
               </div>
             ) : (
               <ChartContainer config={dailyTrendConfig} className="h-[200px] w-full">
@@ -853,17 +883,17 @@ export default function DashboardPage() {
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-semibold">
               <ActivityIcon className="size-3.5 text-muted-foreground" />
-              Activity feed
+              {t("dashboard.activityFeed")}
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-muted-foreground">
-                {activity.filter((a) => a.kind !== "usage").length} events
+                {t("dashboard.eventsCount", { count: activity.filter((a) => a.kind !== "usage").length })}
               </span>
               <Link
                 href="/function/tasks"
                 className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
               >
-                View tasks <ArrowUpRightIcon className="size-3" />
+                {t("dashboard.viewTasks")} <ArrowUpRightIcon className="size-3" />
               </Link>
             </div>
           </div>
@@ -882,7 +912,7 @@ export default function DashboardPage() {
 
           <div className="divide-y">
             {recentActivity.length === 0 ? (
-              <div className="py-4 text-center text-xs text-muted-foreground">No activity records</div>
+              <div className="py-4 text-center text-xs text-muted-foreground">{t("dashboard.noActivityRecords")}</div>
             ) : (
               recentActivity.map((a) => (
                 <div key={a.seq} className="flex gap-2.5 py-2">
@@ -902,7 +932,7 @@ export default function DashboardPage() {
                     <Badge variant="outline" className="px-1.5 py-0 text-[9px] text-muted-foreground">
                       {a.kind}
                     </Badge>
-                    <div className="mt-0.5 text-[9px] tabular-nums text-muted-foreground">{fmtRel(a.ts)}</div>
+                    <div className="mt-0.5 text-[9px] tabular-nums text-muted-foreground">{fmtRel(a.ts, t)}</div>
                   </div>
                 </div>
               ))
@@ -915,19 +945,19 @@ export default function DashboardPage() {
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-semibold">
               <BugIcon className="size-3.5 text-muted-foreground" />
-              Findings
+              {t("dashboard.findings")}
             </div>
             <Link
               href="/function/findings"
               className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
             >
-              All <ArrowUpRightIcon className="size-3" />
+              {t("dashboard.all")} <ArrowUpRightIcon className="size-3" />
             </Link>
           </div>
 
           <div className="divide-y">
             {recentFindings.length === 0 ? (
-              <div className="py-4 text-center text-xs text-muted-foreground">No findings</div>
+              <div className="py-4 text-center text-xs text-muted-foreground">{t("dashboard.noFindings")}</div>
             ) : (
               recentFindings.map((f) => (
                 <div key={f.id} className="flex items-start gap-2 py-2">
@@ -947,7 +977,7 @@ export default function DashboardPage() {
                       {f.summary}
                     </div>
                   </div>
-                  <span className="shrink-0 text-[9px] tabular-nums text-muted-foreground">{fmtRel(f.ts)}</span>
+                  <span className="shrink-0 text-[9px] tabular-nums text-muted-foreground">{fmtRel(f.ts, t)}</span>
                 </div>
               ))
             )}
@@ -960,22 +990,31 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div className="flex items-center gap-1.5 text-xs font-semibold">
             <ClockIcon className="size-3.5 text-muted-foreground" />
-            Tasks
+            {t("dashboard.tasks")}
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-muted-foreground">{tasks.length} tasks</span>
+            <span className="text-[10px] text-muted-foreground">
+              {t("dashboard.tasksCount", { count: tasks.length })}
+            </span>
             <Link
               href="/function/tasks"
               className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
             >
-              All <ArrowUpRightIcon className="size-3" />
+              {t("dashboard.all")} <ArrowUpRightIcon className="size-3" />
             </Link>
           </div>
         </div>
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr className="border-b">
-              {["Task", "Status", "Engine", "Goal progress", "In flight", "Last activity"].map((h) => (
+              {[
+                t("dashboard.table.task"),
+                t("dashboard.table.status"),
+                t("dashboard.table.engine"),
+                t("dashboard.table.goalProgress"),
+                t("dashboard.table.inFlight"),
+                t("dashboard.table.lastActivity"),
+              ].map((h) => (
                 <th
                   key={h}
                   className="px-4 py-2 text-left text-[9px] font-semibold uppercase tracking-widest text-muted-foreground first:pl-4"
@@ -989,27 +1028,27 @@ export default function DashboardPage() {
             {sortedTasks.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-6 text-center text-xs text-muted-foreground">
-                  No tasks
+                  {t("dashboard.noTasks")}
                 </td>
               </tr>
             ) : (
-              sortedTasks.map((t) => {
-                const goalsPct = t.goals_total ? Math.round(((t.goals_met ?? 0) / t.goals_total) * 100) : null;
+              sortedTasks.map((task) => {
+                const goalsPct = task.goals_total ? Math.round(((task.goals_met ?? 0) / task.goals_total) * 100) : null;
                 return (
-                  <tr key={t.id} className="border-b last:border-0 transition-colors hover:bg-muted/30">
+                  <tr key={task.id} className="border-b last:border-0 transition-colors hover:bg-muted/30">
                     <td className="max-w-xs px-4 py-3">
-                      <Link href={`/function/tasks/detail?id=${t.id}`} className="group flex flex-col">
-                        <span className="truncate font-medium group-hover:underline">{t.description}</span>
-                        <span className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">{t.id}</span>
+                      <Link href={`/function/tasks/detail?id=${task.id}`} className="group flex flex-col">
+                        <span className="truncate font-medium group-hover:underline">{task.description}</span>
+                        <span className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">{task.id}</span>
                       </Link>
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge domain="task" value={t.status} dot className="px-1.5 py-0 text-[10px]" />
+                      <StatusBadge domain="task" value={task.status} dot className="px-1.5 py-0 text-[10px]" />
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge
                         domain="engine"
-                        value={t.engine_mode ?? "idle"}
+                        value={task.engine_mode ?? "idle"}
                         className="px-1.5 py-0 text-[10px]"
                       />
                     </td>
@@ -1018,7 +1057,7 @@ export default function DashboardPage() {
                         <div className="flex items-center gap-2">
                           <Progress value={goalsPct} className="h-1 w-14" />
                           <span className="tabular-nums text-muted-foreground">
-                            {t.goals_met ?? 0}/{t.goals_total}
+                            {task.goals_met ?? 0}/{task.goals_total}
                           </span>
                         </div>
                       ) : (
@@ -1026,14 +1065,14 @@ export default function DashboardPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 tabular-nums">
-                      {(t.in_flight ?? 0) > 0 ? (
-                        <span className="font-semibold">{t.in_flight}</span>
+                      {(task.in_flight ?? 0) > 0 ? (
+                        <span className="font-semibold">{task.in_flight}</span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3 tabular-nums text-muted-foreground">
-                      {fmtRel(t.last_activity_unix ?? t.created_unix)}
+                      {fmtRel(task.last_activity_unix ?? task.created_unix, t)}
                     </td>
                   </tr>
                 );
@@ -1047,18 +1086,18 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         {/* Asset distribution */}
         <Card className="p-4">
-          <SectionTitle icon={NetworkIcon} sub="By type">
-            Asset distribution
+          <SectionTitle icon={NetworkIcon} sub={t("dashboard.byType")}>
+            {t("dashboard.assetDistribution")}
           </SectionTitle>
 
           {assetByType.length === 0 ? (
-            <div className="py-6 text-center text-xs text-muted-foreground">No asset data</div>
+            <div className="py-6 text-center text-xs text-muted-foreground">{t("dashboard.noAssetData")}</div>
           ) : (
             <div className="flex flex-col gap-2">
               {assetByType.map(([type, count]) => (
                 <div key={type} className="flex items-center gap-2 text-xs">
-                  <span className="w-8 shrink-0 text-right text-[10px] text-muted-foreground">
-                    {ASSET_TYPE_LABELS[type] ?? type}
+                  <span className="w-14 shrink-0 text-right text-[10px] text-muted-foreground">
+                    {type in ASSET_TYPE_KEYS ? t(ASSET_TYPE_KEYS[type as keyof typeof ASSET_TYPE_KEYS]) : type}
                   </span>
                   <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
                     <div
@@ -1072,18 +1111,20 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div className="mt-3 border-t pt-3 text-[10px] text-muted-foreground">{totalAssets} nodes in total</div>
+          <div className="mt-3 border-t pt-3 text-[10px] text-muted-foreground">
+            {t("dashboard.nodesTotal", { count: totalAssets })}
+          </div>
         </Card>
 
         {/* Traffic status codes */}
         <Card className="p-4">
-          <SectionTitle icon={ActivityIcon} sub={`${traffic.length} requests`}>
-            Traffic status codes
+          <SectionTitle icon={ActivityIcon} sub={t("dashboard.requestsCount", { count: traffic.length })}>
+            {t("dashboard.trafficStatusCodes")}
           </SectionTitle>
 
           {/* bar chart */}
           {trafficByCodes.length === 0 ? (
-            <div className="py-6 text-center text-xs text-muted-foreground">No traffic data</div>
+            <div className="py-6 text-center text-xs text-muted-foreground">{t("dashboard.noTrafficData")}</div>
           ) : (
             <>
               <div className="mb-3 flex items-end gap-2" style={{ height: 52 }}>
@@ -1100,7 +1141,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="border-t pt-2.5">
-                <div className="mb-1.5 text-[10px] text-muted-foreground">Recent requests</div>
+                <div className="mb-1.5 text-[10px] text-muted-foreground">{t("dashboard.recentRequests")}</div>
                 <div className="flex flex-col gap-1.5">
                   {recentTraffic.map((e) => (
                     <div key={e.id} className="flex items-center gap-1.5 text-[10px]">
@@ -1129,11 +1170,11 @@ export default function DashboardPage() {
 
         {/* System status & pending approvals */}
         <Card className="p-4">
-          <SectionTitle icon={ShieldCheckIcon}>System status</SectionTitle>
+          <SectionTitle icon={ShieldCheckIcon}>{t("dashboard.systemStatus")}</SectionTitle>
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2">
-              <div className="text-[10px] text-muted-foreground">LLM config</div>
+              <div className="text-[10px] text-muted-foreground">{t("dashboard.llmConfig")}</div>
               <Badge
                 variant="outline"
                 className={cn(
@@ -1143,12 +1184,12 @@ export default function DashboardPage() {
                     : "border-red-500/30 bg-red-500/10 text-red-400",
                 )}
               >
-                {stats?.llm_configured ? "Configured" : "Not configured"}
+                {stats?.llm_configured ? t("dashboard.configured") : t("dashboard.notConfigured")}
               </Badge>
             </div>
 
             <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2">
-              <div className="text-[10px] text-muted-foreground">Traffic capture</div>
+              <div className="text-[10px] text-muted-foreground">{t("dashboard.trafficCapture")}</div>
               <Badge
                 variant="outline"
                 className={cn(
@@ -1158,13 +1199,13 @@ export default function DashboardPage() {
                     : "text-muted-foreground",
                 )}
               >
-                {settings?.traffic_capture ? "On" : "Off"}
+                {settings?.traffic_capture ? t("dashboard.on") : t("dashboard.off")}
               </Badge>
             </div>
 
             {activeProfile && (
               <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2">
-                <div className="text-[10px] text-muted-foreground">Active model</div>
+                <div className="text-[10px] text-muted-foreground">{t("dashboard.activeModel")}</div>
                 <span className="font-mono text-[10px]">{activeProfile.model}</span>
               </div>
             )}
@@ -1173,7 +1214,9 @@ export default function DashboardPage() {
           {/* pending approvals */}
           {pendingCount > 0 && (
             <div className="mt-3">
-              <div className="mb-1.5 text-[10px] font-medium text-amber-400">Pending approvals ({pendingCount})</div>
+              <div className="mb-1.5 text-[10px] font-medium text-amber-400">
+                {t("dashboard.pendingApprovals", { count: pendingCount })}
+              </div>
               <div className="flex flex-col gap-1.5">
                 {pending.slice(0, 3).map((p) => (
                   <Link
@@ -1193,7 +1236,7 @@ export default function DashboardPage() {
                     href="/system/intercept/approvals"
                     className="text-center text-[10px] text-muted-foreground hover:text-foreground"
                   >
-                    {pendingCount - 3} more…
+                    {t("dashboard.moreCount", { count: pendingCount - 3 })}
                   </Link>
                 )}
               </div>
@@ -1203,7 +1246,7 @@ export default function DashboardPage() {
           {pendingCount === 0 && (
             <div className="mt-3 rounded-lg border bg-muted/10 px-3 py-3 text-center text-[10px] text-muted-foreground">
               <ShieldCheckIcon className="mx-auto mb-1 size-4 text-emerald-500/50" />
-              No pending interception approvals
+              {t("dashboard.noPendingApprovals")}
             </div>
           )}
         </Card>
