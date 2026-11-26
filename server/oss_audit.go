@@ -20,8 +20,8 @@ import (
 
 var reSafeVersionTag = regexp.MustCompile(`^[A-Za-z0-9._\-+/]{1,64}$`)
 
-// validateOSSRepoURL ensures repo_url is a valid http/https/file git URL or local directory/archive
-// and prevents flag injection (leading '-').
+// validateOSSRepoURL ensures repo_url is a valid http/https git URL or safe local archive
+// and prevents flag injection (leading '-'), protocol smuggling, and sensitive host path access.
 func validateOSSRepoURL(raw string) error {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -33,17 +33,30 @@ func validateOSSRepoURL(raw string) error {
 	if strings.ContainsAny(s, " \t\r\n") {
 		return fmt.Errorf("invalid repo_url %q: whitespace is forbidden", raw)
 	}
-	if strings.HasPrefix(s, "/") || strings.HasPrefix(s, "./") || strings.HasPrefix(s, "file://") {
+	low := strings.ToLower(s)
+	if strings.HasPrefix(low, "file://") || strings.HasPrefix(low, "ext::") || strings.HasPrefix(low, "ssh://") {
+		return fmt.Errorf("invalid repo_url %q: file://, ext::, and ssh:// protocols are forbidden", raw)
+	}
+	if strings.HasPrefix(s, "/") || strings.HasPrefix(s, "./") {
+		cleaned := filepath.ToSlash(filepath.Clean(s))
+		for _, forbidden := range []string{"/etc/", "/proc/", "/sys/", "/root/", "/app/keys", "/keys/", "wordlists", "jwt.key"} {
+			if strings.Contains(strings.ToLower(cleaned), forbidden) {
+				return fmt.Errorf("invalid repo_url %q: access to sensitive host path is forbidden", raw)
+			}
+		}
+		if !strings.HasSuffix(low, ".zip") && !strings.HasSuffix(low, ".jar") && !strings.HasSuffix(low, ".war") {
+			return fmt.Errorf("local repo_url must be a .zip, .jar, or .war archive")
+		}
 		return nil
 	}
 	u, err := url.Parse(s)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" {
-		return fmt.Errorf("repo_url must be an http(s) repository URL or local path")
+		return fmt.Errorf("repo_url must be an http(s) repository URL or local .zip/.jar/.war archive")
 	}
 	return nil
 }
 
-// extractArchiveBounded safely unpacks a .zip/.jar/.war archive into destDir with ZipSlip and size limits.
+// extractArchiveBounded safely unpacks a .zip/.jar/.war archive into destDir with ZipSlip, symlink, and size limits.
 func extractArchiveBounded(archivePath, destDir string) (int, error) {
 	zr, err := zip.OpenReader(archivePath)
 	if err != nil {
@@ -59,6 +72,9 @@ func extractArchiveBounded(archivePath, destDir string) (int, error) {
 	for _, f := range zr.File {
 		if extracted >= 2000 {
 			break
+		}
+		if f.FileInfo().Mode()&os.ModeSymlink != 0 {
+			continue // never extract symlinks from untrusted archives
 		}
 		target := filepath.Join(destAbs, filepath.Clean(f.Name))
 		rel, relErr := filepath.Rel(destAbs, target)
@@ -166,11 +182,17 @@ func (s *Server) toolOSSFetchSource() actool.CoreTool {
 			} else {
 				cloneCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 				defer cancel()
-				args := []string{"clone", "--depth", "1"}
+				args := []string{
+					"-c", "core.hooksPath=/dev/null",
+					"-c", "core.symlinks=false",
+					"-c", "protocol.file.allow=never",
+					"-c", "protocol.ext.allow=never",
+					"clone", "--depth", "1", "--no-recurse-submodules",
+				}
 				if p.Version != "" {
 					args = append(args, "--branch", p.Version)
 				}
-				args = append(args, p.RepoURL, destDir)
+				args = append(args, "--", p.RepoURL, destDir)
 				cmd := exec.CommandContext(cloneCtx, "git", args...)
 				cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 				if out, err := cmd.CombinedOutput(); err != nil {

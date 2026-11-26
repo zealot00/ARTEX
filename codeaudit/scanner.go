@@ -87,6 +87,9 @@ func walkSourceFiles(root string, fn func(relPath, absPath string) error) error 
 		if err != nil {
 			return nil
 		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
 		if d.IsDir() {
 			if path != root && skipDirs[d.Name()] {
 				return filepath.SkipDir
@@ -389,6 +392,9 @@ func AuditDependencies(root string) ([]DepAdvisory, []string, error) {
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			return nil
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
 			return nil
 		}
 		if d.IsDir() {

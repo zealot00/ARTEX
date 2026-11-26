@@ -248,6 +248,9 @@ func validateAndNormalizeAuditRequest(p *credentialAuditRequest, prodSafe bool) 
 		if (p.Username == "" && p.UserList == "") || (p.Username != "" && p.UserList != "") {
 			return errors.New("provide exactly one of username or user_list")
 		}
+		if p.Username != "" && (strings.HasPrefix(p.Username, "-") || strings.ContainsAny(p.Username, " \t\r\n")) {
+			return errors.New("invalid username: leading '-' or whitespace is not allowed")
+		}
 	}
 	if p.Threads <= 0 {
 		p.Threads = 4
@@ -315,7 +318,9 @@ func (s *Server) toolRunCredentialAudit() actool.CoreTool {
 			var prodSafe bool
 			t := s.m.ResolveTask(strings.TrimSpace(p.TaskID))
 			if t != nil {
+				t.lifecycleMu.RLock()
 				prodSafe = t.ProdSafeMode
+				t.lifecycleMu.RUnlock()
 			}
 			if err := validateAndNormalizeAuditRequest(&p, prodSafe); err != nil {
 				return actool.Errorf(err.Error()), nil
@@ -462,7 +467,7 @@ func validateAndNormalizeSprayRequest(p *passwordSprayRequest, prodSafe bool) er
 	if !allowedSprayProtocols[p.Protocol] {
 		return fmt.Errorf("unsupported spray protocol %q; allowed: smb, ldap, winrm, ssh, rdp, mssql, wmi", p.Protocol)
 	}
-	if p.Domain != "" && strings.ContainsAny(p.Domain, " \t\r\n;|&$`<>\"'\\") {
+	if p.Domain != "" && (strings.HasPrefix(p.Domain, "-") || strings.ContainsAny(p.Domain, " \t\r\n;|&$`<>\"'\\")) {
 		return errors.New("invalid domain")
 	}
 	if p.PassList == "" {
@@ -470,6 +475,9 @@ func validateAndNormalizeSprayRequest(p *passwordSprayRequest, prodSafe bool) er
 	}
 	if (p.Username == "" && p.UserList == "") || (p.Username != "" && p.UserList != "") {
 		return errors.New("provide exactly one of username or user_list")
+	}
+	if p.Username != "" && (strings.HasPrefix(p.Username, "-") || strings.ContainsAny(p.Username, " \t\r\n")) {
+		return errors.New("invalid username: leading '-' or whitespace is not allowed")
 	}
 	if p.StartOffset < 0 {
 		p.StartOffset = 0
@@ -520,11 +528,18 @@ func (s *Server) toolRunPasswordSpray() actool.CoreTool {
 				return actool.Errorf(err.Error()), nil
 			}
 			t := s.m.ResolveTask(strings.TrimSpace(p.TaskID))
-			prodSafe := t != nil && t.ProdSafeMode
+			var prodSafe, lateralGate, lateralApproved bool
+			if t != nil {
+				t.lifecycleMu.RLock()
+				prodSafe = t.ProdSafeMode
+				lateralGate = t.LateralGate
+				lateralApproved = t.LateralApproved
+				t.lifecycleMu.RUnlock()
+			}
 			if err := validateAndNormalizeSprayRequest(&p, prodSafe); err != nil {
 				return actool.Errorf(err.Error()), nil
 			}
-			if t != nil && t.LateralGate && !t.LateralApproved {
+			if t != nil && lateralGate && !lateralApproved {
 				return actool.Errorf("lateral gate is active: approve lateral movement via POST /api/tasks/{id}/lateral/approve before running password spray"), nil
 			}
 			if t != nil && t.Guard != nil {
