@@ -335,6 +335,7 @@ type RecordFindingInput struct {
 type RecordedFinding struct {
 	FindingID int64           `json:"finding_id,string"`
 	NodeID    int64           `json:"finding_node_id,string"`
+	Merged    bool            `json:"merged,omitempty"`
 	Traffic   *FindingTraffic `json:"traffic"`
 }
 
@@ -363,6 +364,14 @@ func RecordFindingTx(ctx context.Context, tx *sql.Tx, in RecordFindingInput, pre
 		if !ok {
 			return nil, errors.New("intent_id must be an intent of this task (intents of associated tasks are read-only)")
 		}
+	}
+	// Server-side same-task deduplication: if an active finding in this task already covers
+	// the same root cause on overlapping assets (or the caller submitted a proof/traffic-anchor
+	// supplement), merge assets, evidence, and traffic bindings into the existing finding.
+	if dup, err := findDuplicateFindingTx(tx, in); err != nil {
+		return nil, err
+	} else if dup != nil {
+		return mergeIntoExistingFindingTx(tx, dup, in, prepared)
 	}
 	payload, _ := json.Marshal(map[string]any{"vulnclass": in.VulnClass, "name": in.Name, "severity": in.Severity, "summary": in.Summary, "evidence": map[string]any{"by": in.Worker, "poc": in.Evidence}})
 	out := &RecordedFinding{}
