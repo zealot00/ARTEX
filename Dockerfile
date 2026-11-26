@@ -267,7 +267,7 @@ RUN set -eux; \
 ARG NETEXEC_VERSION=v1.5.1
 RUN set -eux; \
     python -m venv /opt/netexec; \
-    curl -fsSL --retry 5 --retry-delay 3 \
+    curl --http1.1 -fsSL --retry 5 --retry-all-errors --retry-delay 3 \
       "https://github.com/Pennyw0rth/NetExec/archive/refs/tags/${NETEXEC_VERSION}.tar.gz" -o /tmp/netexec.tar.gz; \
     mkdir -p /tmp/netexec-src; \
     tar -xzf /tmp/netexec.tar.gz -C /tmp/netexec-src --strip-components=1; \
