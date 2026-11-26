@@ -62,11 +62,14 @@ cp .env.example .env          # 设置 POSTGRES_PASSWORD，按需配置 LLM Key 
 docker compose up -d --build  # 基于本地源码构建 artex:local 并启动 postgres
 ```
 
-启动后访问 `http://127.0.0.1:8787`。首次进入 `/setup` 页面时，需从启动日志获取一次性初始化令牌：
+启动后访问 `http://127.0.0.1:8787`。系统**没有默认密码**，首次访问会自动跳转至 `/setup` 页面，需从启动日志获取一次性初始化令牌设置管理员密码（密码长度至少 12 位、不超过 72 字节）：
 
 ```bash
 docker compose logs artex | grep "Setup token"
 ```
+
+- **Web 登录用户名**：固定为全大写 **`ARTEX`**（区分大小写，不是 `admin`）。
+- **Web 登录密码**：为你在 `/setup` 页面首次初始化时自行设置的密码（后续可在 Web 控制台修改）。
 
 ### 方式二：源码编译单二进制
 

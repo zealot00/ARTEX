@@ -56,7 +56,7 @@ docker compose up -d --build
    ```bash
    docker compose logs artex | grep "Setup token"
    ```
-3. 默认管理员用户名为 `ARTEX`，密码长度要求至少 12 个字符（不超过 72 字节）。
+3. **无默认密码**：固定管理员用户名为全大写 **`ARTEX`**（区分大小写，不是 `admin`），请在 `/setup` 页面自行设置管理员密码（长度要求至少 12 个字符，不超过 72 字节）。
 
 ---
 
