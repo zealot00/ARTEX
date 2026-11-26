@@ -410,6 +410,7 @@ func (s *Server) huntTools() []actool.CoreTool {
 	return []actool.CoreTool{
 		s.toolPlanAssetHunt(),
 		s.toolExtractWebContracts(),
+		s.toolExpandSurfaceFromTraffic(),
 		s.toolTrafficFuzzAudit(),
 		s.toolOSSFetchSource(),
 		s.toolCodeScanSemgrep(),
