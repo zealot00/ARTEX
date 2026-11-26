@@ -243,21 +243,31 @@ RUN set -eux; \
     rm -f /tmp/bbot-dry.log
 
 # Post-exploitation, Active Directory, lateral-movement, and static code-audit CLI
-# toolkit in an isolated venv (impacket, netexec, bloodhound-python, certipy-ad, adidnsdump, semgrep).
+# toolkits in isolated venvs to prevent dependency version conflicts:
+#   - /opt/pentest-tools: impacket, bloodhound, certipy-ad, adidnsdump (PyPI)
+#   - /opt/netexec:       NetExec (nxc / netexec, installed from GitHub; not on PyPI)
+#   - /opt/semgrep:       semgrep static code analyzer (PyPI)
 # Guarded at runtime by lateral_gate, electronic fence, and prod_safe_mode.
+ARG NETEXEC_VERSION=v1.5.1
 RUN set -eux; \
-    apt-get update && apt-get install -y --no-install-recommends gcc libffi-dev libssl-dev libkrb5-dev; \
+    apt-get update && apt-get install -y --no-install-recommends gcc g++ libffi-dev libssl-dev libkrb5-dev; \
     python -m venv /opt/pentest-tools; \
     /opt/pentest-tools/bin/pip install --no-cache-dir \
-      impacket netexec bloodhound certipy-ad adidnsdump semgrep; \
-    for bin in /opt/pentest-tools/bin/impacket-* /opt/pentest-tools/bin/nxc /opt/pentest-tools/bin/netexec \
-               /opt/pentest-tools/bin/bloodhound-python /opt/pentest-tools/bin/certipy /opt/pentest-tools/bin/adidnsdump \
-               /opt/pentest-tools/bin/semgrep; do \
+      impacket bloodhound certipy-ad adidnsdump; \
+    python -m venv /opt/netexec; \
+    /opt/netexec/bin/pip install --no-cache-dir \
+      "git+https://github.com/Pennyw0rth/NetExec.git@${NETEXEC_VERSION}"; \
+    python -m venv /opt/semgrep; \
+    /opt/semgrep/bin/pip install --no-cache-dir semgrep; \
+    for bin in /opt/pentest-tools/bin/impacket-* /opt/pentest-tools/bin/bloodhound-python \
+               /opt/pentest-tools/bin/certipy /opt/pentest-tools/bin/adidnsdump \
+               /opt/netexec/bin/nxc /opt/netexec/bin/netexec \
+               /opt/semgrep/bin/semgrep; do \
       if [ -e "$bin" ]; then ln -sf "$bin" "/usr/local/bin/$(basename "$bin")"; fi; \
     done; \
-    apt-get purge -y --auto-remove gcc libffi-dev libssl-dev libkrb5-dev; \
+    apt-get purge -y --auto-remove gcc g++ libffi-dev libssl-dev libkrb5-dev; \
     rm -rf /var/lib/apt/lists/*; \
-    chisel --help >/dev/null; kubectl version --client >/dev/null; semgrep --version >/dev/null
+    chisel --help >/dev/null; kubectl version --client >/dev/null; nxc --version >/dev/null; semgrep --version >/dev/null
 
 
 # Preinstall Playwright MCP and CLI (globally) so no npx network download is needed at runtime.
