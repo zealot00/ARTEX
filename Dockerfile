@@ -245,29 +245,46 @@ RUN set -eux; \
 # Post-exploitation, Active Directory, lateral-movement, and static code-audit CLI
 # toolkits in isolated venvs to prevent dependency version conflicts:
 #   - /opt/pentest-tools: impacket, bloodhound, certipy-ad, adidnsdump (PyPI)
-#   - /opt/netexec:       NetExec (nxc / netexec, installed from GitHub; not on PyPI)
 #   - /opt/semgrep:       semgrep static code analyzer (PyPI)
+#   - /opt/netexec:       NetExec (nxc / netexec, from GitHub tarball + HTTP/1.1 git)
 # Guarded at runtime by lateral_gate, electronic fence, and prod_safe_mode.
-ARG NETEXEC_VERSION=v1.5.1
 RUN set -eux; \
+    git config --global http.version HTTP/1.1; \
+    git config --global http.postBuffer 524288000; \
     apt-get update && apt-get install -y --no-install-recommends gcc g++ libffi-dev libssl-dev libkrb5-dev; \
     python -m venv /opt/pentest-tools; \
     /opt/pentest-tools/bin/pip install --no-cache-dir \
       impacket bloodhound certipy-ad adidnsdump; \
-    python -m venv /opt/netexec; \
-    /opt/netexec/bin/pip install --no-cache-dir \
-      "git+https://github.com/Pennyw0rth/NetExec.git@${NETEXEC_VERSION}"; \
     python -m venv /opt/semgrep; \
     /opt/semgrep/bin/pip install --no-cache-dir semgrep; \
     for bin in /opt/pentest-tools/bin/impacket-* /opt/pentest-tools/bin/bloodhound-python \
                /opt/pentest-tools/bin/certipy /opt/pentest-tools/bin/adidnsdump \
-               /opt/netexec/bin/nxc /opt/netexec/bin/netexec \
                /opt/semgrep/bin/semgrep; do \
+      if [ -e "$bin" ]; then ln -sf "$bin" "/usr/local/bin/$(basename "$bin")"; fi; \
+    done; \
+    semgrep --version >/dev/null
+
+ARG NETEXEC_VERSION=v1.5.1
+RUN set -eux; \
+    python -m venv /opt/netexec; \
+    curl -fsSL --retry 5 --retry-delay 3 \
+      "https://github.com/Pennyw0rth/NetExec/archive/refs/tags/${NETEXEC_VERSION}.tar.gz" -o /tmp/netexec.tar.gz; \
+    mkdir -p /tmp/netexec-src; \
+    tar -xzf /tmp/netexec.tar.gz -C /tmp/netexec-src --strip-components=1; \
+    ok=0; \
+    for attempt in 1 2 3; do \
+      if /opt/netexec/bin/pip install --no-cache-dir /tmp/netexec-src; then ok=1; break; fi; \
+      echo "[netexec] pip install attempt ${attempt} failed, retrying in 5s..." >&2; \
+      sleep 5; \
+    done; \
+    [ "$ok" = "1" ]; \
+    rm -rf /tmp/netexec.tar.gz /tmp/netexec-src; \
+    for bin in /opt/netexec/bin/nxc /opt/netexec/bin/netexec; do \
       if [ -e "$bin" ]; then ln -sf "$bin" "/usr/local/bin/$(basename "$bin")"; fi; \
     done; \
     apt-get purge -y --auto-remove gcc g++ libffi-dev libssl-dev libkrb5-dev; \
     rm -rf /var/lib/apt/lists/*; \
-    chisel --help >/dev/null; kubectl version --client >/dev/null; nxc --version >/dev/null; semgrep --version >/dev/null
+    chisel --help >/dev/null; kubectl version --client >/dev/null; nxc --version >/dev/null
 
 
 # Preinstall Playwright MCP and CLI (globally) so no npx network download is needed at runtime.

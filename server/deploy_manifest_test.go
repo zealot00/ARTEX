@@ -106,7 +106,7 @@ func TestDeploymentArtifactsAndDocsParity(t *testing.T) {
 		"ARTEX_POCS_DIR=/app/pocs",
 		"ARTEX_NUCLEI_TEMPLATES_DIR=/opt/nuclei-templates",
 		"impacket",
-		"Pennyw0rth/NetExec.git",
+		"Pennyw0rth/NetExec",
 		"bloodhound",
 		"certipy-ad",
 		"adidnsdump",
