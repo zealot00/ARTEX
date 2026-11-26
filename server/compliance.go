@@ -20,6 +20,8 @@ func (s *Server) complianceTools() []actool.CoreTool {
 	return []actool.CoreTool{
 		s.toolListTaskChecks(),
 		s.toolRecordCheckResult(),
+		s.toolAuditLateralSegmentation(),
+		s.toolAuditTrafficCompliance(),
 	}
 }
 
